@@ -1,0 +1,202 @@
+[
+ {
+  "file": "package.json",
+  "size": 465,
+  "sha1": "b33754af376521ff193df9e7ebe761a6e557487b",
+  "text": true
+ },
+ {
+  "file": "next.config.ts",
+  "size": 183,
+  "sha1": "79cb2f7db13865075342f37066ff114339df42ec",
+  "text": true
+ },
+ {
+  "file": "tsconfig.json",
+  "size": 690,
+  "sha1": "5bdadc97acb6de7bdf6d1604614d187be0b46b49",
+  "text": true
+ },
+ {
+  "file": ".env.example",
+  "size": 1003,
+  "sha1": "b4f263fdd46ec21df5b070b1d7342fefdee20c04",
+  "text": false
+ },
+ {
+  "file": ".gitignore",
+  "size": 33,
+  "sha1": "f1e787a2bb2c53b7d829a43221eee43fb62ef9fb",
+  "text": false
+ },
+ {
+  "file": "next-env.d.ts",
+  "size": 262,
+  "sha1": "79ea33d5bd6bf5319667f287c6aec3a5e0ce256a",
+  "text": true
+ },
+ {
+  "file": "DEPLOY.md",
+  "size": 4710,
+  "sha1": "6bf8d0adcd980041e3ca399a75d70e20bb52e9b1",
+  "text": true
+ },
+ {
+  "file": "public/images/hero-home.webp",
+  "size": 550700,
+  "sha1": "6a81a3d268f8cd34d71cfe7e03b74207362f139d",
+  "text": false
+ },
+ {
+  "file": "public/images/kitchen.webp",
+  "size": 464344,
+  "sha1": "7e88beda5d3766184722837843e21cf354731bf4",
+  "text": false
+ },
+ {
+  "file": "public/images/pool.webp",
+  "size": 746978,
+  "sha1": "00b156af676ab722aaea7833be2049ccdd7a7c06",
+  "text": false
+ },
+ {
+  "file": "src/middleware.ts",
+  "size": 569,
+  "sha1": "6cc4b6c826472fe8d813c937305af9b39e04300a",
+  "text": true
+ },
+ {
+  "file": "src/app/globals.css",
+  "size": 5098,
+  "sha1": "fffe5479b3c9dcf6b6e832dedfef135cc7b2cc5f",
+  "text": true
+ },
+ {
+  "file": "src/app/layout.tsx",
+  "size": 3166,
+  "sha1": "d898ecb7d75c52dadff66d526c4a4cb715c77246",
+  "text": true
+ },
+ {
+  "file": "src/app/page.tsx",
+  "size": 13102,
+  "sha1": "af610b5c607df0f3f787ad3658293ea21b68aa2d",
+  "text": true
+ },
+ {
+  "file": "src/app/api/auth/[...nextauth]/route.ts",
+  "size": 79,
+  "sha1": "c8e7539a2f97b0eef5dc852e44c2fed9926ac09d",
+  "text": true
+ },
+ {
+  "file": "src/app/api/signup/route.ts",
+  "size": 1368,
+  "sha1": "6e2b55f96f836501e96c6f49a5fd183fccd81f83",
+  "text": true
+ },
+ {
+  "file": "src/app/api/checkout/route.ts",
+  "size": 2456,
+  "sha1": "0113568182986a1c0dab889f6839318558bbad21",
+  "text": true
+ },
+ {
+  "file": "src/app/api/portal/route.ts",
+  "size": 1157,
+  "sha1": "3eb8346b787e58ffd04ace4f3cb89ba9765c272a",
+  "text": true
+ },
+ {
+  "file": "src/app/api/webhooks/stripe/route.ts",
+  "size": 2519,
+  "sha1": "26b0e67f487f6f4e5aa9d71e9c8610b4d21670e1",
+  "text": true
+ },
+ {
+  "file": "src/app/api/listings/route.ts",
+  "size": 2320,
+  "sha1": "4717391a081cb47c28d50ebc9631758c778f84ba",
+  "text": true
+ },
+ {
+  "file": "src/app/api/roster/route.ts",
+  "size": 1025,
+  "sha1": "9c47e928a2a769e34c60befed5f5257be8c8046d",
+  "text": true
+ },
+ {
+  "file": "src/app/roster/page.tsx",
+  "size": 4285,
+  "sha1": "74d173d9a184881c12c85c57be89f74f59c29916",
+  "text": true
+ },
+ {
+  "file": "src/app/pricing/page.tsx",
+  "size": 2718,
+  "sha1": "4152847c36311f82a86cfc800f76b34cd9a2ec0a",
+  "text": true
+ },
+ {
+  "file": "src/app/login/page.tsx",
+  "size": 2087,
+  "sha1": "7c3052d6e6c489ddcc347b3d39edec86908c3700",
+  "text": true
+ },
+ {
+  "file": "src/app/signup/page.tsx",
+  "size": 3381,
+  "sha1": "5f0e921be8721823aa539badfe94e32321617ee4",
+  "text": true
+ },
+ {
+  "file": "src/app/dashboard/page.tsx",
+  "size": 3988,
+  "sha1": "57c83f3176d18d15c2a2a095e99cdd910ff196ee",
+  "text": true
+ },
+ {
+  "file": "src/lib/db.ts",
+  "size": 6134,
+  "sha1": "b9cec5a165248f92be8cf6b3ec5bdfc1735c5dae",
+  "text": true
+ },
+ {
+  "file": "src/lib/stripe.ts",
+  "size": 939,
+  "sha1": "57526da670a9ac269bc77d30db47cd06278ce395",
+  "text": true
+ },
+ {
+  "file": "src/lib/auth.ts",
+  "size": 1739,
+  "sha1": "79559bf0041e4f5a72e0ea187f2fd3622b848568",
+  "text": true
+ },
+ {
+  "file": "src/components/SubscribeButton.tsx",
+  "size": 1252,
+  "sha1": "0e8c8ae1178ed7dbdb7304ac1724c6cd1a45dbab",
+  "text": true
+ },
+ {
+  "file": "src/components/LookPicker.tsx",
+  "size": 2180,
+  "sha1": "a50a765df5cb3668bad394bd08a7330f37a5db2e",
+  "text": true
+ },
+ {
+  "file": "src/components/ListingForm.tsx",
+  "size": 4527,
+  "sha1": "9c1654db498ef65c6abee053ca31651ec39ded59",
+  "text": true
+ },
+ {
+  "file": "src/components/ManageBillingButton.tsx",
+  "size": 934,
+  "sha1": "6b90f553fdca9df5616edf81951e7f187cb98abc",
+  "text": true
+ }
+]
+TEXT TOTAL BYTES: 73333
+FILE COUNT: 33

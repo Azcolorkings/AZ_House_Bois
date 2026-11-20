@@ -1,0 +1,82 @@
+import { NextResponse } from "next/server";
+import { getStripe } from "@/lib/stripe";
+import { updateUserSubscriptionByCustomer } from "@/lib/db";
+
+/**
+ * Stripe webhook: keeps subscription status in sync.
+ * Endpoint in the Stripe Dashboard must point at /api/webhooks/stripe
+ * and its signing secret goes in STRIPE_WEBHOOK_SECRET.
+ */
+export async function POST(req: Request) {
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) {
+    return NextResponse.json(
+      { error: "Webhook secret not configured." },
+      { status: 503 }
+    );
+  }
+
+  let stripe;
+  try {
+    stripe = getStripe();
+  } catch {
+    return NextResponse.json(
+      { error: "Stripe is not configured." },
+      { status: 503 }
+    );
+  }
+
+  const payload = await req.text();
+  const signature = req.headers.get("stripe-signature");
+  if (!signature) {
+    return NextResponse.json({ error: "Missing signature." }, { status: 400 });
+  }
+
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(payload, signature, secret);
+  } catch (err) {
+    console.error("webhook signature error", err);
+    return NextResponse.json({ error: "Invalid signature." }, { status: 400 });
+  }
+
+  try {
+    if (
+      event.type === "checkout.session.completed" ||
+      event.type === "customer.subscription.created" ||
+      event.type === "customer.subscription.updated" ||
+      event.type === "customer.subscription.deleted"
+    ) {
+      const obj = event.data.object as {
+        customer?: string;
+        id?: string;
+        status?: string;
+        current_period_end?: number;
+        metadata?: Record<string, string>;
+      };
+      const customerId =
+        typeof obj.customer === "string" ? obj.customer : undefined;
+      if (customerId) {
+        const status =
+          event.type === "customer.subscription.deleted"
+            ? "canceled"
+            : obj.status ?? "active";
+        await updateUserSubscriptionByCustomer(customerId, {
+          subscription_status: status,
+          stripe_subscription_id:
+            event.type === "checkout.session.completed"
+              ? undefined
+              : (obj as { id?: string }).id,
+          current_period_end: obj.current_period_end
+            ? new Date(obj.current_period_end * 1000).toISOString()
+            : undefined,
+        });
+      }
+    }
+  } catch (err) {
+    console.error("webhook handler error", err);
+    return NextResponse.json({ error: "Handler failed." }, { status: 500 });
+  }
+
+  return NextResponse.json({ received: true });
+}
