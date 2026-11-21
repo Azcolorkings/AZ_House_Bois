@@ -27,6 +27,9 @@ When a cleaner (boi) creates an account on AZ House Bois, signup must also colle
 ## Added Nov 21, 12:30 AM
 - The application must make cleaners aware UP FRONT that there is a $20/month subscription fee to list (charged only after approval — they don't pay until approved, but they must know about the fee before applying).
 
+## Added Nov 21 — founding offer (Steven, to seed the roster)
+- The first 5 approved bois get their first month free, then $20/month. Wired in via the existing live Stripe coupon `founding-boi-free-month` (100% off, once, max 5 redemptions, Boi Listing product only); the site gates it in `POST /api/checkout` and tracks use with `users.founding_free_used`. See DEPLOY.md section 3g. The offer is shown on /apply, the boi card on /pricing, and the boi dashboard while spots remain — never on the homeowner side.
+
 ## Build notes
 - Do not start building until the Stripe checkout browser task finishes (avoid deploy clashes); then implement + deploy once.
 - Agreement text must be drafted for Steven's review before it goes live (legal-ish document).

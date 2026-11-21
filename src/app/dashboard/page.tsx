@@ -17,6 +17,7 @@ import {
 import SubscribeButton from "@/components/SubscribeButton";
 import ManageBillingButton from "@/components/ManageBillingButton";
 import ListingForm from "@/components/ListingForm";
+import FoundingOffer from "@/components/FoundingOffer";
 import HomeownerAgreementSignForm from "@/components/HomeownerAgreementForm";
 import BookingList, { type BookingView } from "@/components/BookingList";
 
@@ -212,6 +213,11 @@ export default async function Dashboard({
                 year: "numeric",
               })}
             </p>
+          )}
+          {user.role === "boi" && isApproved && !isActive && (
+            <div style={{ marginTop: 12 }}>
+              <FoundingOffer />
+            </div>
           )}
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
             {isActive ? (

@@ -29,6 +29,17 @@ export const SERVICE_LABELS: Record<ServiceKey, string> = {
 
 export const SERVICE_KEYS: ServiceKey[] = ["regular", "deep", "moveout"];
 
+/**
+ * Founding-boi offer (Nov 21, 2026, set by Steven): the first 5 approved
+ * bois get their first month free, then $20/month. The Stripe coupon
+ * already exists on the live account — do NOT create another one. It is
+ * 100% off, duration `once`, max 5 redemptions, restricted to the Boi
+ * Listing product. The site gates it in POST /api/checkout and tracks
+ * use with the users.founding_free_used flag (src/lib/db.ts).
+ */
+export const FOUNDING_COUPON_ID = "founding-boi-free-month";
+export const FOUNDING_FREE_SPOTS = 5;
+
 export const FREQUENCY_LABELS: Record<FrequencyKey, string> = {
   "one-time": "One-time",
   weekly: "Weekly",

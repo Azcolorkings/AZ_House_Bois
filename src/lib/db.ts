@@ -23,6 +23,8 @@ export interface UserRow {
   homeowner_agreement_signed_at: string | null;
   /** Homeowner date of birth (YYYY-MM-DD) for the 18+ rule. Null for bois and for homeowners who signed before this was collected. */
   dob: string | null;
+  /** True when this boi used one of the 5 founding free months. */
+  founding_free_used: boolean;
   created_at: string;
 }
 
@@ -102,6 +104,12 @@ export async function ensureSchema() {
   // Homeowner date of birth for the 18+ rule (added Nov 21, 2026).
   await sql`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS dob TEXT
+  `;
+  // Founding free month flag (added Nov 21, 2026): one of the 5 free
+  // first months for approved bois. Set only after a coupon checkout
+  // session is created successfully — never on a failed attempt.
+  await sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS founding_free_used BOOLEAN NOT NULL DEFAULT FALSE
   `;
   await sql`
     CREATE TABLE IF NOT EXISTS listings (
@@ -276,6 +284,28 @@ export async function updateUserStripe(
       stripe_subscription_id = ${patch.stripe_subscription_id ?? null},
       current_period_end = ${patch.current_period_end ?? null}
     WHERE id = ${id}
+  `;
+}
+
+/** How many of the 5 founding free months have been used (boi accounts only). */
+export async function countFoundingFreeUsed(): Promise<number> {
+  await ensureSchema();
+  const { rows } = await sql<{ count: string }>`
+    SELECT COUNT(*)::text AS count FROM users
+    WHERE role = 'boi' AND founding_free_used = TRUE
+  `;
+  return Number(rows[0]?.count ?? 0);
+}
+
+/**
+ * Mark that this boi used one of the founding free months. Call ONLY
+ * after a coupon checkout session was created successfully — a failed
+ * session creation must not burn a spot.
+ */
+export async function markFoundingFreeUsed(userId: string): Promise<void> {
+  await ensureSchema();
+  await sql`
+    UPDATE users SET founding_free_used = TRUE WHERE id = ${userId}
   `;
 }
 

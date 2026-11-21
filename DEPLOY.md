@@ -239,6 +239,48 @@ use. `paid_at` marks payment; `refund_status` is `none` /
 service, total / company 20% / cleaner 80%, date, status, and paid /
 refund flags.
 
+## 3g. Founding-boi offer — first month free (added 2026-11-21)
+
+The first 5 approved bois get their first month free, then $20/month
+(decided by Steven Nov 21, 2026, to seed the roster):
+
+- **Coupon (already exists — do NOT create another one):** Stripe
+  coupon `founding-boi-free-month`, live mode, 100% off, duration
+  `once`, max 5 redemptions, restricted to the Boi Listing product
+  (`prod_VfFVCzV9OHUfLY`). `times_redeemed` was 0 when wired in.
+- **Gating (in `POST /api/checkout`, boi role only):** before creating
+  the subscription-mode Checkout Session, the route checks the boi's
+  application is approved (existing gate) and that
+  `countFoundingFreeUsed() < 5`. If both hold, the session is created
+  with `discounts: [{ coupon: "founding-boi-free-month" }]`. The
+  coupon is NEVER attached to a homeowner/client checkout.
+- **Usage tracking:** `users.founding_free_used` (added with
+  `ADD COLUMN IF NOT EXISTS` in `ensureSchema()`, same pattern as the
+  `dob` column) means "this boi used one of the 5 free months".
+  `countFoundingFreeUsed()` counts boi users with the flag set;
+  `markFoundingFreeUsed(userId)` sets it — called ONLY after the
+  coupon session is created successfully, so a failed session
+  creation does not burn a spot. A boi who already used one does not
+  get another.
+- **Fallback:** if Stripe rejects the coupon (e.g. max redemptions
+  already hit), the route logs the error and falls back to a plain
+  checkout with no coupon — the boi can still subscribe; the free
+  month is a bonus, never a blocker. The webhook needs no change: a
+  100%-off first invoice still fires `checkout.session.completed` and
+  the subscription is marked active as usual.
+- **Site copy:** a shared server component
+  (`src/components/FoundingOffer.tsx`) reads the live remaining count
+  and shows "Founding offer: the first 5 approved bois get their
+  first month free, then $20/month" plus "N of 5 founding spots
+  left". It renders nothing once all 5 are used, and it is only ever
+  rendered on boi-facing surfaces: the `/apply` page, the boi card on
+  `/pricing`, and the boi dashboard Membership card (approved but not
+  yet subscribed). Never on the homeowner side.
+- **Coupon constants:** `FOUNDING_COUPON_ID` and
+  `FOUNDING_FREE_SPOTS` live in `src/lib/pricing.ts` next to the
+  cleaning prices. The cleaner agreement text is unchanged — the free
+  month is a promo, not an agreement change.
+
 ## 3b. Cleaner application flow (added 2026-11-21)
 
 Cleaners (bois) apply before they can list or pay anything:

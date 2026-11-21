@@ -1,8 +1,12 @@
+import type Stripe from "stripe";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getStripe, priceIdForRole, priceConfigured } from "@/lib/stripe";
+import { FOUNDING_COUPON_ID, FOUNDING_FREE_SPOTS } from "@/lib/pricing";
 import {
+  countFoundingFreeUsed,
   getUserById,
+  markFoundingFreeUsed,
   updateUserStripe,
   getApplicationByUserId,
   hasSignedHomeownerAgreement,
@@ -86,9 +90,18 @@ export async function POST(req: Request) {
       await updateUserStripe(user.id, { stripe_customer_id: customerId });
     }
 
+    // Founding offer (boi only, never homeowners): the first 5 approved
+    // bois get their first month free via the 100%-off coupon. A boi who
+    // already used one does not get another.
+    let foundingFree = false;
+    if (role === "boi" && !user.founding_free_used) {
+      const used = await countFoundingFreeUsed();
+      foundingFree = used < FOUNDING_FREE_SPOTS;
+    }
+
     const appUrl =
       process.env.NEXT_PUBLIC_APP_URL || "https://az-house-bois.vercel.app";
-    const checkout = await stripe.checkout.sessions.create({
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "subscription",
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
@@ -96,7 +109,31 @@ export async function POST(req: Request) {
       cancel_url: `${appUrl}/pricing?cancelled=1`,
       metadata: { user_id: user.id, role },
       subscription_data: { metadata: { user_id: user.id, role } },
-    });
+    };
+
+    let checkout;
+    if (foundingFree) {
+      try {
+        checkout = await stripe.checkout.sessions.create({
+          ...sessionParams,
+          discounts: [{ coupon: FOUNDING_COUPON_ID }],
+        });
+        // Only burn a founding spot once the coupon session exists — a
+        // failed creation must not consume one of the 5.
+        await markFoundingFreeUsed(user.id);
+      } catch (couponErr) {
+        // The free month is a bonus, never a blocker: if Stripe rejects
+        // the coupon (e.g. max redemptions reached), fall back to a plain
+        // checkout so the boi can still subscribe.
+        console.error(
+          "founding coupon failed, plain checkout instead",
+          couponErr
+        );
+        checkout = await stripe.checkout.sessions.create(sessionParams);
+      }
+    } else {
+      checkout = await stripe.checkout.sessions.create(sessionParams);
+    }
 
     return NextResponse.json({ url: checkout.url });
   } catch (err) {

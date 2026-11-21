@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SubscribeButton from "@/components/SubscribeButton";
+import FoundingOffer from "@/components/FoundingOffer";
 import {
   CLEANING_PRICES,
   SERVICE_LABELS,
@@ -7,7 +8,7 @@ import {
   formatCents,
 } from "@/lib/pricing";
 
-export default function Pricing() {
+export default async function Pricing() {
   return (
     <section className="section">
       <div className="container">
@@ -42,6 +43,9 @@ export default function Pricing() {
             <p style={{ fontSize: "2rem", fontWeight: 900, margin: "8px 0" }}>
               $20<span className="muted" style={{ fontSize: "1rem" }}>/month</span>
             </p>
+            <div style={{ marginTop: 12 }}>
+              <FoundingOffer />
+            </div>
             <ul className="checklist">
               <li>Apply first — applications are reviewed, and you only pay after you&apos;re approved</li>
               <li>Publish your profile to paying homeowners statewide</li>

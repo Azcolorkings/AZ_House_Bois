@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { getApplicationByUserId, getUserById } from "@/lib/db";
 import ApplicationForm from "@/components/ApplicationForm";
+import FoundingOffer from "@/components/FoundingOffer";
 
 export default async function ApplyPage() {
   const session = await auth();
@@ -47,6 +48,10 @@ export default async function ApplyPage() {
           Fill this out to become a contracted cleaner on AZ House Bois. We
           review every application — you&apos;ll hear back on your dashboard.
         </p>
+
+        <div style={{ marginTop: 16 }}>
+          <FoundingOffer />
+        </div>
 
         {app?.status === "pending" && (
           <div className="card" style={{ marginTop: 20 }}>
