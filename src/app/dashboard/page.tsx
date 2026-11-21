@@ -2,23 +2,58 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import {
   getApplicationByUserId,
+  getBookingsForBoi,
+  getBookingsForClient,
   getListingByUserId,
   getUserById,
   hasSignedHomeownerAgreement,
 } from "@/lib/db";
+import {
+  formatCents,
+  frequencyLabel,
+  serviceLabel,
+  timeSlotLabel,
+} from "@/lib/pricing";
 import SubscribeButton from "@/components/SubscribeButton";
 import ManageBillingButton from "@/components/ManageBillingButton";
 import ListingForm from "@/components/ListingForm";
 import HomeownerAgreementSignForm from "@/components/HomeownerAgreementForm";
+import BookingList, { type BookingView } from "@/components/BookingList";
+
+function toBookingView(
+  b: Awaited<ReturnType<typeof getBookingsForClient>>[number]
+): BookingView {
+  return {
+    id: b.id,
+    service_label: serviceLabel(b.service),
+    amount: formatCents(b.amount_cents),
+    cleaner_amount: formatCents(b.cleaner_amount_cents),
+    company_amount: formatCents(b.company_amount_cents),
+    date: b.date,
+    time_label: timeSlotLabel(b.time_slot),
+    frequency_label: frequencyLabel(b.frequency),
+    address: b.service_address,
+    supplies_by_homeowner: b.supplies_by_homeowner,
+    notes: b.notes,
+    status: b.status,
+    paid: Boolean(b.paid_at),
+    refund_status: b.refund_status,
+    needs_refund: b.needs_refund,
+    client_email: b.client_email,
+    boi_display_name: b.boi_display_name,
+    boi_city: b.boi_city,
+    created_at: b.created_at,
+  };
+}
 
 export default async function Dashboard({
   searchParams,
 }: {
-  searchParams: Promise<{ subscribed?: string }>;
+  searchParams: Promise<{ subscribed?: string; booked?: string }>;
 }) {
   const session = await auth();
   const user = session?.user?.id ? await getUserById(session.user.id) : null;
-  const { subscribed } = await searchParams;
+  const { subscribed, booked } = await searchParams;
 
   if (!user) {
     return (
@@ -38,6 +73,15 @@ export default async function Dashboard({
   const application =
     user.role === "boi" ? await getApplicationByUserId(user.id) : null;
   const isApproved = application?.status === "approved";
+  const bookings =
+    user.role === "boi"
+      ? (await getBookingsForBoi(user.id)).map(toBookingView)
+      : (await getBookingsForClient(user.id)).map(toBookingView);
+  // Bois only ever see paid bookings — a request whose checkout was
+  // never completed has nothing to confirm and stays invisible to them.
+  const boiBookings = bookings.filter(
+    (b) => !(b.status === "requested" && !b.paid)
+  );
 
   return (
     <section className="section">
@@ -52,6 +96,14 @@ export default async function Dashboard({
           <div className="success" role="status">
             Welcome aboard — your subscription is being confirmed. If the
             roster still looks locked, give it a minute and refresh.
+          </div>
+        )}
+
+        {booked === "1" && user.role === "client" && (
+          <div className="success" role="status">
+            Your clean is booked and paid — your boi will confirm it shortly.
+            You&apos;ll see it below, and you can cancel it from here if your
+            plans change.
           </div>
         )}
 
@@ -183,6 +235,34 @@ export default async function Dashboard({
             )}
           </div>
         </div>
+
+        {user.role === "boi" && (
+          <div className="card" style={{ marginTop: 20 }}>
+            <h3>Your bookings</h3>
+            <p className="muted">
+              Paid bookings show up here — accept or decline each one. Your
+              pay is 80% of the cleaning fee, paid biweekly after AZ House
+              Bois gets paid.
+            </p>
+            <div style={{ marginTop: 16 }}>
+              <BookingList bookings={boiBookings} view="boi" />
+            </div>
+          </div>
+        )}
+
+        {user.role === "client" && (
+          <div className="card" style={{ marginTop: 20 }}>
+            <h3>My bookings</h3>
+            <p className="muted">
+              Cleans you&apos;ve booked and paid for. Cancel here if your
+              plans change — if your boi hasn&apos;t confirmed yet, you get
+              refunded automatically.
+            </p>
+            <div style={{ marginTop: 16 }}>
+              <BookingList bookings={bookings} view="client" />
+            </div>
+          </div>
+        )}
 
         {user.role === "boi" && (
           <div className="card" style={{ marginTop: 20 }}>

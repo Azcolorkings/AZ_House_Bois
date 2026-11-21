@@ -1,5 +1,11 @@
 import Link from "next/link";
 import SubscribeButton from "@/components/SubscribeButton";
+import {
+  CLEANING_PRICES,
+  SERVICE_LABELS,
+  SERVICE_KEYS,
+  formatCents,
+} from "@/lib/pricing";
 
 export default function Pricing() {
   return (
@@ -57,6 +63,38 @@ export default function Pricing() {
           Payments are processed securely by Stripe. You&apos;ll create an
           account first, then check out — your membership starts right away
           once payment goes through.
+        </p>
+
+        <h2 style={{ marginTop: 48 }}>Cleaning prices</h2>
+        <p className="muted" style={{ maxWidth: 640 }}>
+          Flat rates — the same price no matter the house size or how often
+          you book. You pay when you book, through AZ House Bois; you never
+          pay a cleaner directly. Booking a clean requires the $20/month
+          homeowner membership above.
+        </p>
+        <div className="grid-3" style={{ marginTop: 24 }}>
+          {SERVICE_KEYS.map((key) => (
+            <div key={key} className="card">
+              <h3 style={{ marginTop: 0 }}>{SERVICE_LABELS[key]}</h3>
+              <p style={{ fontSize: "2rem", fontWeight: 900, margin: "8px 0" }}>
+                {formatCents(CLEANING_PRICES[key])}
+                <span className="muted" style={{ fontSize: "1rem" }}> / clean</span>
+              </p>
+              <p className="muted small">
+                {key === "regular" &&
+                  "Full regular clean — kitchen, bathrooms, living & bedrooms."}
+                {key === "deep" &&
+                  "Everything in a regular clean, plus built-up grime, baseboards & fixtures."}
+                {key === "moveout" &&
+                  "Empty-home clean, including inside cabinets & appliances."}
+              </p>
+            </div>
+          ))}
+        </div>
+        <p className="muted small" style={{ marginTop: 16 }}>
+          Pick your boi on the roster and book — your boi confirms the
+          booking from his dashboard. If he declines, or you cancel before
+          he confirms, you get refunded.
         </p>
       </div>
     </section>

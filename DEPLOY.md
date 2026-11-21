@@ -150,6 +150,95 @@ now it is actually enforced:
 - Homeowners who signed the agreement before this change have no DOB on
   record; they are not re-checked. New signups and new signatures are.
 
+## 3f. Booking & one-time cleaning payments (added 2026-11-21)
+
+Homeowners book and pay for a clean at booking time; the boi confirms
+from their dashboard:
+
+**Prices (flat rates, set by Steven Nov 21, 2026):** Regular clean $180,
+Deep clean $350, Move-in / move-out $450 — the same price no matter the
+house size or frequency. The single source of truth is
+`src/lib/pricing.ts` (`CLEANING_PRICES`, cents). Nothing else in the
+app hard-codes a cleaning price, and `/api/bookings` re-derives the
+price server-side — a client-sent amount is never trusted.
+
+**The 20/80 split (decided Nov 21, 2026):** on every cleaning fee, AZ
+House Bois keeps 20% and the cleaner gets 80% — Regular $36 / $144,
+Deep $70 / $280, Move-in/out $90 / $360. The split is computed in
+`splitAmount()` in `src/lib/pricing.ts` and stored on the booking row
+(`company_amount_cents`, `cleaner_amount_cents`) at creation. The
+cleaner is paid biweekly after the company gets paid — that timing is
+in the contractor agreement (`src/lib/agreement.ts`, point 5, version
+`2026-11-21-split`), not an automatic payout: there is no Stripe
+Connect or automatic transfer in this build; Steven pays the bois out
+of the Stripe balance on the biweekly schedule. `/admin/bookings` shows
+the cleaner pay owed on confirmed cleans so he can see the total at a
+glance.
+
+**Flow:**
+
+1. Homeowner (subscribed, agreement signed) picks a boi on the roster
+   → "Book" goes to `/book/[listingId]`, which re-checks every gate
+   server-side (client role, active subscription, signed agreement,
+   listing published, boi approved + subscribed).
+2. Booking form: service (with flat price), date (no past dates), time
+   slot (8 AM / 10 AM / 12 PM / 2 PM / 4 PM), frequency (one-time /
+   weekly / every 2 weeks / monthly — informational only), service
+   address, notes, and an "I have my own cleaning supplies" checkbox.
+   Unchecked = the boi brings his own supplies, per the agreement.
+3. `POST /api/bookings` validates the same gates + the service/price,
+   creates the booking as `requested`, then creates a Stripe Checkout
+   session in **payment** mode for exactly that amount, metadata
+   `{ type: "booking", booking_id }`, and returns the Checkout URL.
+   The existing `/api/checkout` subscription route is untouched.
+4. The webhook (`/api/webhooks/stripe`) checks `checkout.session.completed`
+   for `metadata.type === "booking"` FIRST: it marks that booking paid
+   (`paid_at` + payment intent id) and returns without touching
+   subscription status. Subscription checkouts keep working exactly as
+   before — they have no `type: "booking"` metadata. A booking paid
+   after it was already cancelled is flagged `needs_refund` for a
+   manual refund.
+5. The boi sees paid requests on their dashboard with Accept (→
+   `confirmed`) and Decline buttons. The homeowner sees their bookings
+   with a Cancel button.
+6. **Refunds:** declining a paid booking, or cancelling one that is
+   still `requested`, attempts an automatic Stripe refund of the
+   payment intent. If the refund fails, the booking is still declined /
+   cancelled and flagged `needs_refund` — the admin refunds it by hand
+   in Stripe and sees the flag on `/admin/bookings`. Cancelling a
+   **confirmed** booking never auto-refunds; it is flagged
+   `needs_refund` for the owner to handle manually.
+7. **Refund permission caveat:** the live restricted key
+   ("AZ House Bois Vercel") was created with Checkout Sessions /
+   Customer Portal / Customers Write + Prices / Products / Subscriptions
+   Read — it may not have the Charges permission refunds need. If
+   refunds fail with a permission error, add **Charges: Write** to that
+   key in the Stripe Dashboard (requires the authenticator code), or
+   refund manually in Stripe. The code never crashes on a failed refund.
+
+**Emails** (`src/lib/notify.ts`, same fail-soft pattern as signups):
+Steven gets a new-booking email (client, boi, service, amount + split,
+date/time, address, supplies flag); the boi gets a request email
+including their 80% pay for the clean; the homeowner gets an email on
+confirm/decline. All run via `after()` so they never delay a response.
+Note the free-tier limit: Resend only delivers mail sent from
+`onboarding@resend.dev` to the Resend account owner's own email, so
+boi/homeowner mail will be rejected by Resend until a domain is
+verified in Resend and the `from` in `notify.ts` is changed — the
+failure is logged and the booking still succeeds.
+
+**Tables:** `bookings` is auto-created by `ensureSchema()` in
+`src/lib/db.ts` (plus `ADD COLUMN IF NOT EXISTS` for the split columns,
+same pattern as the agreement columns). Status: `requested` →
+`confirmed` / `declined` / `cancelled`; `completed` exists for later
+use. `paid_at` marks payment; `refund_status` is `none` /
+`not_required` / `refunded` / `failed`.
+
+**Admin:** `/admin/bookings` (gated to `ADMIN_EMAIL`, same pattern as
+`/admin/applications`) lists every booking with client email, boi name,
+service, total / company 20% / cleaner 80%, date, status, and paid /
+refund flags.
+
 ## 3b. Cleaner application flow (added 2026-11-21)
 
 Cleaners (bois) apply before they can list or pay anything:
@@ -227,6 +316,12 @@ Homeowners sign before they can see the roster or subscribe:
   `/api/checkout` and `/api/roster` until they sign on the dashboard.
 - Sign up as a boi → subscribe → dashboard listing editor appears →
   publish → listing shows on the roster.
+- Booking: as a subscribed homeowner, roster → Book → pick a service,
+  date, time, address → pay the flat rate in Stripe Checkout (payment
+  mode) → land back on the dashboard with the booking listed. The boi
+  sees the paid request on their dashboard and can accept or decline;
+  declining refunds the payment. `/admin/bookings` lists every booking
+  with the total / company 20% / cleaner 80% split.
 - Cancel from the dashboard (Customer Portal) → status updates via webhook.
 
 ## Known notes

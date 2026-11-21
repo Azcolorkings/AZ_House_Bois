@@ -29,7 +29,7 @@ I bring my own cleaning supplies to every job — my own cleaning products, tool
 I will not flirt with, date, hook up with, or pursue any kind of personal or romantic contact with a client — and I will not accept or encourage that kind of contact from a client either. If a client crosses the line, I tell AZ House Bois. Breaking this rule ends my listing.
 
 5. HOW I GET PAID
-I do not get paid by the client directly. AZ House Bois pays me. I get paid every two weeks (biweekly), after AZ House Bois gets paid. Cleaning fees are between the homeowner and AZ House Bois — I never ask a client to pay me on the side.
+I do not get paid by the client directly. AZ House Bois pays me. I get paid every two weeks (biweekly), after AZ House Bois gets paid. For every cleaning fee, I get 80% and AZ House Bois keeps 20% — for example, on a $180 regular clean I get $144, on a $350 deep clean I get $280, and on a $450 move-in / move-out clean I get $360. Cleaning fees are between the homeowner and AZ House Bois — I never ask a client to pay me on the side.
 
 6. THE LISTING FEE — $20 A MONTH, ONLY AFTER APPROVAL
 Listing my profile on AZ House Bois costs $20 per month. I pay NOTHING to apply, and I pay NOTHING unless my application is approved. The $20/month starts only after I am approved, and I can cancel anytime. If my application is denied, I owe nothing.
@@ -39,4 +39,4 @@ I am 18 years or older. Everything in my application is true and complete to the
 
 I have read this agreement and I agree to all of it.`;
 
-export const AGREEMENT_VERSION = "2026-11-21-supplies";
+export const AGREEMENT_VERSION = "2026-11-21-split";

@@ -75,6 +75,9 @@ export default async function AdminApplicationsPage() {
           <span className="pill">{denied} denied</span>
         </p>
         <p className="small muted">
+          <Link href="/admin/bookings">All bookings →</Link>
+        </p>
+        <p className="small muted">
           SSNs shown here are decrypted for you because you need them for
           1099 filing. Never share or screenshot them.
         </p>

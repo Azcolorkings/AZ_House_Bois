@@ -117,7 +117,7 @@ export default async function Roster({
                 </p>
                 {l.availability && <p className="small"><strong>Availability:</strong> {l.availability}</p>}
                 {l.bio && <p className="small muted">{l.bio}</p>}
-                <Link href="/dashboard" className="btn btn-brand" style={{ marginTop: 8 }}>
+                <Link href={`/book/${l.id}`} className="btn btn-brand" style={{ marginTop: 8 }}>
                   Book {l.display_name} →
                 </Link>
               </article>

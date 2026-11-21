@@ -145,6 +145,44 @@ export async function ensureSchema() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `;
+  // Bookings (added Nov 21, 2026). One row per clean, paid once at
+  // booking time through Stripe Checkout (payment mode). Frequency is
+  // informational — payment covers the single upcoming clean only;
+  // there is no recurring billing for cleans.
+  await sql`
+    CREATE TABLE IF NOT EXISTS bookings (
+      id TEXT PRIMARY KEY,
+      client_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      boi_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      listing_id TEXT NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+      service TEXT NOT NULL CHECK (service IN ('regular', 'deep', 'moveout')),
+      amount_cents INTEGER NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'usd',
+      company_amount_cents INTEGER NOT NULL DEFAULT 0,
+      cleaner_amount_cents INTEGER NOT NULL DEFAULT 0,
+      date TEXT NOT NULL,
+      time_slot TEXT NOT NULL,
+      frequency TEXT NOT NULL DEFAULT 'one-time' CHECK (frequency IN ('one-time', 'weekly', 'every-2-weeks', 'monthly')),
+      service_address TEXT NOT NULL DEFAULT '',
+      supplies_by_homeowner BOOLEAN NOT NULL DEFAULT FALSE,
+      notes TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'confirmed', 'declined', 'completed', 'cancelled')),
+      stripe_checkout_session_id TEXT,
+      stripe_payment_intent_id TEXT,
+      paid_at TIMESTAMPTZ,
+      refund_status TEXT NOT NULL DEFAULT 'none' CHECK (refund_status IN ('none', 'not_required', 'refunded', 'failed')),
+      needs_refund BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `;
+  // Split columns were added the same day as the bookings table; a
+  // deployment created before that has the table without them.
+  await sql`
+    ALTER TABLE bookings
+      ADD COLUMN IF NOT EXISTS company_amount_cents INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS cleaner_amount_cents INTEGER NOT NULL DEFAULT 0
+  `;
   initialized = true;
 }
 
@@ -310,6 +348,16 @@ export async function upsertListing(
   return parseListing(rows[0]);
 }
 
+export async function getListingById(
+  id: string
+): Promise<ListingRow | null> {
+  await ensureSchema();
+  const { rows } = await sql<ListingRow>`
+    SELECT * FROM listings WHERE id = ${id} LIMIT 1
+  `;
+  return rows[0] ? parseListing(rows[0]) : null;
+}
+
 export async function getPublishedListings(filters?: { city?: string }): Promise<ListingRow[]> {
   await ensureSchema();
   if (filters?.city) {
@@ -396,6 +444,46 @@ export async function listApplications(): Promise<ApplicationWithEmail[]> {
   return rows;
 }
 
+export interface BookingRow {
+  id: string;
+  client_user_id: string;
+  boi_user_id: string;
+  listing_id: string;
+  service: "regular" | "deep" | "moveout";
+  amount_cents: number;
+  currency: string;
+  /** AZ House Bois' 20% of the cleaning fee, in cents. */
+  company_amount_cents: number;
+  /** The cleaner's 80% of the cleaning fee, in cents. */
+  cleaner_amount_cents: number;
+  /** Date of the clean, YYYY-MM-DD. */
+  date: string;
+  /** Start time, HH:MM (24h) — one of the TIME_SLOTS in src/lib/pricing.ts. */
+  time_slot: string;
+  frequency: "one-time" | "weekly" | "every-2-weeks" | "monthly";
+  service_address: string;
+  /** True when the homeowner has their own cleaning supplies (boi brings none). */
+  supplies_by_homeowner: boolean;
+  notes: string;
+  status: "requested" | "confirmed" | "declined" | "completed" | "cancelled";
+  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  /** Set by the webhook when the one-time payment completes. */
+  paid_at: string | null;
+  /** none = no refund attempted/needed yet. */
+  refund_status: "none" | "not_required" | "refunded" | "failed";
+  /** True when a refund is owed but could not be issued automatically — the admin handles it in Stripe. */
+  needs_refund: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BookingWithNames extends BookingRow {
+  client_email: string;
+  boi_display_name: string;
+  boi_city: string;
+}
+
 export async function updateApplicationStatus(
   id: string,
   status: "approved" | "denied",
@@ -412,4 +500,169 @@ export async function updateApplicationStatus(
     RETURNING *
   `;
   return rows[0] ?? null;
+}
+
+// --- Bookings ---
+
+export async function createBooking(
+  id: string,
+  data: {
+    client_user_id: string;
+    boi_user_id: string;
+    listing_id: string;
+    service: BookingRow["service"];
+    amount_cents: number;
+    company_amount_cents: number;
+    cleaner_amount_cents: number;
+    date: string;
+    time_slot: string;
+    frequency: BookingRow["frequency"];
+    service_address: string;
+    supplies_by_homeowner: boolean;
+    notes: string;
+    stripe_checkout_session_id?: string | null;
+  }
+): Promise<BookingRow> {
+  await ensureSchema();
+  const { rows } = await sql<BookingRow>`
+    INSERT INTO bookings (
+      id, client_user_id, boi_user_id, listing_id, service, amount_cents,
+      currency, company_amount_cents, cleaner_amount_cents,
+      date, time_slot, frequency, service_address,
+      supplies_by_homeowner, notes, status, stripe_checkout_session_id
+    )
+    VALUES (
+      ${id}, ${data.client_user_id}, ${data.boi_user_id}, ${data.listing_id},
+      ${data.service}, ${data.amount_cents}, 'usd',
+      ${data.company_amount_cents}, ${data.cleaner_amount_cents}, ${data.date},
+      ${data.time_slot}, ${data.frequency}, ${data.service_address},
+      ${data.supplies_by_homeowner}, ${data.notes}, 'requested',
+      ${data.stripe_checkout_session_id ?? null}
+    )
+    RETURNING *
+  `;
+  return rows[0];
+}
+
+export async function getBookingById(id: string): Promise<BookingRow | null> {
+  await ensureSchema();
+  const { rows } = await sql<BookingRow>`
+    SELECT * FROM bookings WHERE id = ${id} LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+
+export async function getBookingByCheckoutSessionId(
+  sessionId: string
+): Promise<BookingRow | null> {
+  await ensureSchema();
+  const { rows } = await sql<BookingRow>`
+    SELECT * FROM bookings WHERE stripe_checkout_session_id = ${sessionId} LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+
+export async function getBookingsForClient(
+  clientUserId: string
+): Promise<BookingWithNames[]> {
+  await ensureSchema();
+  const { rows } = await sql<BookingWithNames>`
+    SELECT b.*, u.email AS client_email, l.display_name AS boi_display_name,
+      l.city AS boi_city
+    FROM bookings b
+    JOIN users u ON u.id = b.client_user_id
+    JOIN listings l ON l.id = b.listing_id
+    WHERE b.client_user_id = ${clientUserId}
+    ORDER BY b.date DESC, b.created_at DESC
+  `;
+  return rows;
+}
+
+export async function getBookingsForBoi(
+  boiUserId: string
+): Promise<BookingWithNames[]> {
+  await ensureSchema();
+  const { rows } = await sql<BookingWithNames>`
+    SELECT b.*, u.email AS client_email, l.display_name AS boi_display_name,
+      l.city AS boi_city
+    FROM bookings b
+    JOIN users u ON u.id = b.client_user_id
+    JOIN listings l ON l.id = b.listing_id
+    WHERE b.boi_user_id = ${boiUserId}
+    ORDER BY b.date ASC, b.created_at DESC
+  `;
+  return rows;
+}
+
+/** Admin: every booking, newest first. */
+export async function getAllBookings(): Promise<BookingWithNames[]> {
+  await ensureSchema();
+  const { rows } = await sql<BookingWithNames>`
+    SELECT b.*, u.email AS client_email, l.display_name AS boi_display_name,
+      l.city AS boi_city
+    FROM bookings b
+    JOIN users u ON u.id = b.client_user_id
+    JOIN listings l ON l.id = b.listing_id
+    ORDER BY b.created_at DESC
+  `;
+  return rows;
+}
+
+export async function updateBookingStatus(
+  id: string,
+  status: BookingRow["status"]
+): Promise<BookingRow | null> {
+  await ensureSchema();
+  const { rows } = await sql<BookingRow>`
+    UPDATE bookings SET status = ${status}, updated_at = NOW()
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return rows[0] ?? null;
+}
+
+/** Called by the Stripe webhook when the one-time payment completes. */
+export async function markBookingPaid(
+  id: string,
+  paymentIntentId: string | null
+): Promise<BookingRow | null> {
+  await ensureSchema();
+  const { rows } = await sql<BookingRow>`
+    UPDATE bookings SET
+      paid_at = NOW(),
+      stripe_payment_intent_id = COALESCE(${paymentIntentId}, stripe_payment_intent_id),
+      updated_at = NOW()
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return rows[0] ?? null;
+}
+
+/** Record a refund outcome. `needsRefund` true = the admin must refund it by hand in Stripe. */
+export async function setBookingRefund(
+  id: string,
+  refundStatus: BookingRow["refund_status"],
+  needsRefund: boolean
+): Promise<BookingRow | null> {
+  await ensureSchema();
+  const { rows } = await sql<BookingRow>`
+    UPDATE bookings SET
+      refund_status = ${refundStatus},
+      needs_refund = ${needsRefund},
+      updated_at = NOW()
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return rows[0] ?? null;
+}
+
+export async function setBookingCheckoutSession(
+  id: string,
+  sessionId: string
+): Promise<void> {
+  await ensureSchema();
+  await sql`
+    UPDATE bookings SET stripe_checkout_session_id = ${sessionId}, updated_at = NOW()
+    WHERE id = ${id}
+  `;
 }
