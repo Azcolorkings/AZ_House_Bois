@@ -8,8 +8,9 @@ export default function Pricing() {
         <h2>Membership — $20/month</h2>
         <p className="muted" style={{ maxWidth: 640 }}>
           Two sides. One roster. Pick yours — cancel anytime from your
-          dashboard. Cleaning fees are paid directly between homeowner and
-          boi; the membership covers the roster and the listing only.
+          dashboard. Cleaning fees go through AZ House Bois — you never pay a
+          cleaner on the side; the membership covers the roster and the
+          listing only.
         </p>
         <div className="grid-2" style={{ marginTop: 28 }}>
           <div className="card">

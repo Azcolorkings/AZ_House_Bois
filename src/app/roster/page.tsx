@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
-import { getPublishedListings, getUserById } from "@/lib/db";
+import { getPublishedListings, getUserById, hasSignedHomeownerAgreement } from "@/lib/db";
 import SubscribeButton from "@/components/SubscribeButton";
 
 const CITIES = [
@@ -38,6 +38,28 @@ export default async function Roster({
                 Already a member? <Link href="/login?next=/roster">Log in</Link>
               </p>
             )}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // Homeowners who subscribed before the agreement existed still have to
+  // sign it before they can browse — the roster API enforces this too.
+  if (!hasSignedHomeownerAgreement(user)) {
+    return (
+      <section className="section">
+        <div className="container" style={{ maxWidth: 680 }}>
+          <h2>One more step first</h2>
+          <p className="muted">
+            Before you can browse the roster, sign the homeowner agreement
+            &amp; waiver — it covers breakage while cleaners are on duty and
+            the zero-tolerance rule on harassment. It only takes a minute.
+          </p>
+          <div className="card" style={{ marginTop: 24 }}>
+            <Link href="/dashboard" className="btn btn-brand">
+              Sign it on your dashboard →
+            </Link>
           </div>
         </div>
       </section>

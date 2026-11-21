@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getStripe, priceIdForRole, priceConfigured } from "@/lib/stripe";
-import { getUserById, updateUserStripe, getApplicationByUserId } from "@/lib/db";
+import {
+  getUserById,
+  updateUserStripe,
+  getApplicationByUserId,
+  hasSignedHomeownerAgreement,
+} from "@/lib/db";
 
 /**
  * Creates a Stripe Checkout session for a $20/month recurring subscription.
@@ -35,6 +40,20 @@ export async function POST(req: Request) {
     const user = await getUserById(session.user.id);
     if (!user) {
       return NextResponse.json({ error: "Account not found." }, { status: 404 });
+    }
+
+    // Homeowners must sign the homeowner agreement & waiver before they
+    // can subscribe — new signups sign at signup, older accounts sign from
+    // their dashboard. No signature, no checkout.
+    if (role === "client" && !hasSignedHomeownerAgreement(user)) {
+      return NextResponse.json(
+        {
+          error:
+            "Sign the homeowner agreement & waiver first — you can do that from your dashboard. It covers breakage and the zero-tolerance rule on harassment, and it only takes a minute.",
+          code: "homeowner-agreement-required",
+        },
+        { status: 403 }
+      );
     }
 
     // Cleaners only pay after their application is approved — nobody pays

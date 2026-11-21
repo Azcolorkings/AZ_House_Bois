@@ -117,6 +117,32 @@ Cleaners (bois) apply before they can list or pay anything:
 7. Tables: `applications` is auto-created by `ensureSchema()` in
    `src/lib/db.ts` like `users` and `listings`. No manual migration.
 
+## 3c. Homeowner agreement & waiver (added 2026-11-21)
+
+Homeowners sign before they can see the roster or subscribe:
+
+1. New homeowners read and sign the agreement on the signup page itself
+   (text in `src/lib/homeowner-agreement.ts`): the job is cleaning only,
+   AZ House Bois is NOT responsible for broken/damaged items while cleaners
+   are on duty, zero-tolerance no sexual harassment (breaking it ends the
+   account at once, the cleaner leaves and it gets reported), payment goes
+   through AZ House Bois ($20/month membership, never pay a cleaner on the
+   side), 18+. Signature = typed full name + checkbox.
+2. The signed text, signature, and timestamp are stored on the `users`
+   record (`homeowner_agreement_text/signature/signed_at` — added by
+   `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` in `ensureSchema()`, so
+   existing deployments pick it up with no manual migration). The signed
+   copy never changes if the text is later edited.
+3. Homeowners who created their account before the agreement existed sign
+   it from their dashboard instead (`/api/homeowner-agreement` + the
+   dashboard agreement card) — the gates below catch them either way.
+4. Server-side enforcement, not just UI: `/api/checkout` refuses client
+   checkout without a signature (403, code `homeowner-agreement-required`)
+   and `/api/roster` refuses unsigned homeowners (403, same code); the
+   roster page also redirects unsigned homeowners to sign on the dashboard.
+5. The dashboard shows a homeowner their signed status (name + date) or
+   the sign form when unsigned. The cleaner flow is untouched.
+
 ## 4. Stripe setup (correct account only)
 
 1. Confirm the account with `list_available_accounts_or_orgs` — it must
@@ -136,7 +162,10 @@ Cleaners (bois) apply before they can list or pay anything:
 
 - Home page loads with the hero, looks picker, checklist, membership
   cards, areas, FAQ.
-- Sign up as a homeowner → subscribe ($20/mo) → roster unlocks.
+- Sign up as a homeowner → the homeowner agreement & waiver is on the
+  signup page (sign it there) → subscribe ($20/mo) → roster unlocks.
+- Unsigned homeowners (accounts made before the agreement) get a 403 from
+  `/api/checkout` and `/api/roster` until they sign on the dashboard.
 - Sign up as a boi → subscribe → dashboard listing editor appears →
   publish → listing shows on the roster.
 - Cancel from the dashboard (Customer Portal) → status updates via webhook.

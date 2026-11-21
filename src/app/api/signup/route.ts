@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { createUser, getUserByEmail } from "@/lib/db";
+import { HOMEOWNER_AGREEMENT_TEXT } from "@/lib/homeowner-agreement";
 
 export async function POST(req: Request) {
   try {
@@ -20,6 +21,32 @@ export async function POST(req: Request) {
       );
     }
 
+    // Homeowners read and sign the homeowner agreement & waiver at signup,
+    // before they can see the roster or subscribe. Cleaners sign their own
+    // contractor agreement on the application instead.
+    let homeownerAgreement: { text: string; signature: string; signedAt: string } | undefined;
+    if (role === "client") {
+      const signature = String(body?.homeowner_agreement_signature ?? "").trim();
+      const agreed = body?.homeowner_agreed === true;
+      if (!agreed) {
+        return NextResponse.json(
+          { error: "You have to check the box that you read and agree to the homeowner agreement & waiver." },
+          { status: 400 }
+        );
+      }
+      if (!signature) {
+        return NextResponse.json(
+          { error: "Type your full name to sign the homeowner agreement & waiver." },
+          { status: 400 }
+        );
+      }
+      homeownerAgreement = {
+        text: HOMEOWNER_AGREEMENT_TEXT,
+        signature,
+        signedAt: new Date().toISOString(),
+      };
+    }
+
     const existing = await getUserByEmail(email);
     if (existing) {
       return NextResponse.json(
@@ -29,7 +56,7 @@ export async function POST(req: Request) {
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
-    const user = await createUser(randomUUID(), email, passwordHash, role);
+    const user = await createUser(randomUUID(), email, passwordHash, role, homeownerAgreement);
     return NextResponse.json({ ok: true, id: user.id, role: user.role });
   } catch (err) {
     console.error("signup error", err);

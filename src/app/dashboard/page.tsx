@@ -1,9 +1,15 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
-import { getApplicationByUserId, getListingByUserId, getUserById } from "@/lib/db";
+import {
+  getApplicationByUserId,
+  getListingByUserId,
+  getUserById,
+  hasSignedHomeownerAgreement,
+} from "@/lib/db";
 import SubscribeButton from "@/components/SubscribeButton";
 import ManageBillingButton from "@/components/ManageBillingButton";
 import ListingForm from "@/components/ListingForm";
+import HomeownerAgreementSignForm from "@/components/HomeownerAgreementForm";
 
 export default async function Dashboard({
   searchParams,
@@ -88,6 +94,47 @@ export default async function Dashboard({
                 ✓ Your application is approved. Subscribe below to start your
                 $20/month listing.
               </p>
+            )}
+          </div>
+        )}
+
+        {user.role === "client" && (
+          <div className="card" style={{ marginTop: 20 }}>
+            <h3>Your homeowner agreement</h3>
+            {hasSignedHomeownerAgreement(user) ? (
+              <p className="muted">
+                ✓ Signed
+                {user.homeowner_agreement_signature && (
+                  <>
+                    {" "}
+                    as{" "}
+                    <strong>{user.homeowner_agreement_signature}</strong>
+                  </>
+                )}
+                {user.homeowner_agreement_signed_at && (
+                  <>
+                    {" "}
+                    on{" "}
+                    {new Date(user.homeowner_agreement_signed_at).toLocaleDateString("en-US", {
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </>
+                )}
+                . It covers breakage while cleaners are on duty and the
+                zero-tolerance rule on harassment.
+              </p>
+            ) : (
+              <>
+                <p className="muted">
+                  Before you can subscribe or browse the roster, sign the
+                  homeowner agreement &amp; waiver. It covers breakage while
+                  cleaners are on duty and the zero-tolerance rule on
+                  harassment.
+                </p>
+                <HomeownerAgreementSignForm />
+              </>
             )}
           </div>
         )}

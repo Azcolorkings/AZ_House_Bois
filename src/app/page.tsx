@@ -229,9 +229,9 @@ export default function Home() {
             </div>
           </div>
           <p className="muted small" style={{ marginTop: 16 }}>
-            Cancel anytime from your dashboard. Cleaning fees are paid directly
-            between homeowner and boi — the membership covers the roster and
-            the listing only.
+            Cancel anytime from your dashboard. Cleaning fees go through AZ
+            House Bois — you never pay a cleaner on the side. The membership
+            covers the roster and the listing only.
           </p>
         </div>
       </section>

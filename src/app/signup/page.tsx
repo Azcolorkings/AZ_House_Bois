@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { HomeownerAgreementBlock } from "@/components/HomeownerAgreementForm";
 
 function SignupForm() {
   const params = useSearchParams();
@@ -11,6 +12,8 @@ function SignupForm() {
   const [role, setRole] = useState<"client" | "boi">(initialRole);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [homeownerAgreed, setHomeownerAgreed] = useState(false);
+  const [homeownerSignature, setHomeownerSignature] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -21,7 +24,13 @@ function SignupForm() {
     const res = await fetch("/api/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, role }),
+      body: JSON.stringify({
+        email,
+        password,
+        role,
+        homeowner_agreement_signature: homeownerSignature,
+        homeowner_agreed: homeownerAgreed,
+      }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -74,6 +83,14 @@ function SignupForm() {
       <label htmlFor="password">Password</label>
       <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" minLength={8} />
       <p className="small muted">At least 8 characters. 18+ only.</p>
+      {role === "client" && (
+        <HomeownerAgreementBlock
+          agreed={homeownerAgreed}
+          setAgreed={setHomeownerAgreed}
+          signature={homeownerSignature}
+          setSignature={setHomeownerSignature}
+        />
+      )}
       {error && <div className="error" role="alert">{error}</div>}
       <button type="submit" className="btn btn-brand" disabled={busy} style={{ width: "100%", marginTop: 20 }}>
         {busy ? "Creating your account…" : "Create my account"}
@@ -90,7 +107,7 @@ export default function SignupPage() {
     <section className="section">
       <div className="container" style={{ maxWidth: 560 }}>
         <h2>Join AZ House Bois</h2>
-        <p className="muted">Create your account, then subscribe — $20/month on either side. Cleaners apply first and only pay after approval.</p>
+        <p className="muted">Create your account, then subscribe — $20/month on either side. Cleaners apply first and only pay after approval. Homeowners read and sign the homeowner agreement &amp; waiver as part of signing up.</p>
         <div style={{ marginTop: 20 }}>
           <Suspense>
             <SignupForm />

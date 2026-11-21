@@ -17,6 +17,10 @@ export interface UserRow {
   subscription_status: string;
   stripe_subscription_id: string | null;
   current_period_end: string | null;
+  /** Snapshot of the homeowner agreement text the homeowner signed, if any. */
+  homeowner_agreement_text: string | null;
+  homeowner_agreement_signature: string | null;
+  homeowner_agreement_signed_at: string | null;
   created_at: string;
 }
 
@@ -85,6 +89,14 @@ export async function ensureSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `;
+  // Homeowner agreement columns were added after launch (Nov 21, 2026);
+  // the users table may already exist without them.
+  await sql`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS homeowner_agreement_text TEXT,
+      ADD COLUMN IF NOT EXISTS homeowner_agreement_signature TEXT,
+      ADD COLUMN IF NOT EXISTS homeowner_agreement_signed_at TIMESTAMPTZ
+  `;
   await sql`
     CREATE TABLE IF NOT EXISTS listings (
       id TEXT PRIMARY KEY,
@@ -150,15 +162,53 @@ export async function createUser(
   id: string,
   email: string,
   passwordHash: string,
-  role: Role
+  role: Role,
+  homeownerAgreement?: {
+    text: string;
+    signature: string;
+    signedAt: string;
+  }
 ): Promise<UserRow> {
   await ensureSchema();
   const { rows } = await sql<UserRow>`
-    INSERT INTO users (id, email, password_hash, role)
-    VALUES (${id}, ${email}, ${passwordHash}, ${role})
+    INSERT INTO users (
+      id, email, password_hash, role,
+      homeowner_agreement_text, homeowner_agreement_signature,
+      homeowner_agreement_signed_at
+    )
+    VALUES (
+      ${id}, ${email}, ${passwordHash}, ${role},
+      ${homeownerAgreement?.text ?? null},
+      ${homeownerAgreement?.signature ?? null},
+      ${homeownerAgreement?.signedAt ?? null}
+    )
     RETURNING *
   `;
   return rows[0];
+}
+
+/** True when a homeowner has signed the homeowner agreement & waiver. */
+export function hasSignedHomeownerAgreement(user: UserRow): boolean {
+  return Boolean(
+    user.homeowner_agreement_text && user.homeowner_agreement_signature
+  );
+}
+
+/** Record a homeowner's signed agreement. One signature per account. */
+export async function signHomeownerAgreement(
+  userId: string,
+  data: { text: string; signature: string; signedAt: string }
+): Promise<UserRow | null> {
+  await ensureSchema();
+  const { rows } = await sql<UserRow>`
+    UPDATE users SET
+      homeowner_agreement_text = ${data.text},
+      homeowner_agreement_signature = ${data.signature},
+      homeowner_agreement_signed_at = ${data.signedAt}
+    WHERE id = ${userId}
+    RETURNING *
+  `;
+  return rows[0] ?? null;
 }
 
 export async function updateUserStripe(

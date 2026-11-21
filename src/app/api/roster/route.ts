@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { getPublishedListings, getUserById } from "@/lib/db";
+import { getPublishedListings, getUserById, hasSignedHomeownerAgreement } from "@/lib/db";
 
 /** Published boi listings. Only visible to signed-in clients with an active subscription. */
 export async function GET(req: Request) {
@@ -12,7 +12,24 @@ export async function GET(req: Request) {
   if (!user) {
     return NextResponse.json({ error: "Account not found." }, { status: 404 });
   }
-  if (user.role !== "client" || user.subscription_status !== "active") {
+  if (user.role !== "client") {
+    return NextResponse.json(
+      { error: "The roster is for homeowners only." },
+      { status: 403 }
+    );
+  }
+  // Homeowners must sign the homeowner agreement & waiver before browsing
+  // — new signups sign at signup, older accounts sign from the dashboard.
+  if (!hasSignedHomeownerAgreement(user)) {
+    return NextResponse.json(
+      {
+        error: "Sign the homeowner agreement & waiver first — you can do that from your dashboard.",
+        code: "homeowner-agreement-required",
+      },
+      { status: 403 }
+    );
+  }
+  if (user.subscription_status !== "active") {
     return NextResponse.json(
       {
         error: "An active $20/month homeowner membership is required to browse the roster.",
