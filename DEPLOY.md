@@ -380,3 +380,14 @@ Homeowners sign before they can see the roster or subscribe:
 - No business address, phone number, or contact email is invented
   anywhere in the app. No testimonials or people are invented — the
   roster starts empty until real bois publish listings.
+
+### 3h. Roster profiles: experience, service areas, application photo
+
+- On approval (`POST /api/admin/applications`, approve only), the boi's listing is prefilled as an **unpublished draft** from their application: experience + service areas + profile photo copied over, display name = legal name, city = first service area matching a known roster city (else Phoenix), looks default `["Classic Boi"]`, availability copied, bio left blank for the boi to write. Prefill runs in try/catch and can never block the approval itself.
+- If a listing already exists it is **never overwritten** — only the application photo is backfilled when the listing has none, so the boi's edits always win.
+- Listing form (`ListingForm.tsx`): editable Cleaning experience textarea + Service areas input, prefilled from the listing. Photo section previews the effective photo ("Showing your application photo" vs "Showing your photo URL"); the URL field is an override — leave empty to keep the application photo, clear it to go back to it.
+- Roster card shows service areas as pills under the city, an **Experience:** line when present, and the effective photo (pasted URL wins, else application photo, else the placeholder).
+- Booking page uses the same effective-photo rule so the card and booking page match.
+- Privacy: only experience, service areas, and the profile photo ever carry from the application to a listing/roster card. SSN, ID upload, address, emergency contact, and legal name are never shown on a profile.
+- `listings` gains `experience`, `service_areas`, `photo_data` columns via `ADD COLUMN IF NOT EXISTS` in `ensureSchema()` (same pattern as earlier tables).
+- Unproven until the first real application is approved: the full approve → prefilled draft → boi edits → roster card path, and the first-run migration on live Neon.

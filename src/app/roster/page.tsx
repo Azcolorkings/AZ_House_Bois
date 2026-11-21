@@ -100,28 +100,45 @@ export default async function Roster({
           </div>
         ) : (
           <div className="grid-3">
-            {listings.map((l) => (
+            {listings.map((l) => {
+              // The pasted photo URL wins; otherwise the photo from the
+              // application is the roster photo.
+              const photoSrc = l.photo_url || l.photo_data;
+              const areas = (l.service_areas || "")
+                .split(",")
+                .map((a) => a.trim())
+                .filter(Boolean);
+              return (
               <article key={l.id} className="card roster-card">
-                {l.photo_url ? (
+                {photoSrc ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={l.photo_url} alt={l.display_name} />
+                  <img src={photoSrc} alt={l.display_name} />
                 ) : (
                   <div className="avatar" aria-hidden="true">🔥</div>
                 )}
                 <h3 style={{ marginTop: 14 }}>{l.display_name}</h3>
                 <p className="muted" style={{ margin: "4px 0" }}>📍 {l.city}</p>
+                {areas.length > 0 && (
+                  <p>
+                    {areas.map((area) => (
+                      <span key={area} className="pill" style={{ margin: "0 6px 6px 0" }}>{area}</span>
+                    ))}
+                  </p>
+                )}
                 <p>
                   {l.looks.map((look) => (
                     <span key={look} className="pill" style={{ margin: "0 6px 6px 0" }}>{look}</span>
                   ))}
                 </p>
                 {l.availability && <p className="small"><strong>Availability:</strong> {l.availability}</p>}
+                {l.experience && <p className="small"><strong>Experience:</strong> {l.experience}</p>}
                 {l.bio && <p className="small muted">{l.bio}</p>}
                 <Link href={`/book/${l.id}`} className="btn btn-brand" style={{ marginTop: 8 }}>
                   Book {l.display_name} →
                 </Link>
               </article>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

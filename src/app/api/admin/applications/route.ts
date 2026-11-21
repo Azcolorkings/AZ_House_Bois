@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
-import { listApplications, updateApplicationStatus } from "@/lib/db";
+import { listApplications, updateApplicationStatus, prefillListingFromApplication } from "@/lib/db";
 import { decryptSecret, maskSsn } from "@/lib/crypto";
 
 /**
@@ -78,6 +78,16 @@ export async function POST(req: Request) {
     const updated = await updateApplicationStatus(id, action, session.user.email);
     if (!updated) {
       return NextResponse.json({ error: "Application not found." }, { status: 404 });
+    }
+    if (action === "approved") {
+      // Prefill the boi's listing from the application (experience,
+      // service areas, profile photo) so their roster profile starts
+      // complete. A prefill failure must never block the approval itself.
+      try {
+        await prefillListingFromApplication(updated);
+      } catch (err) {
+        console.error("listing prefill error", err);
+      }
     }
     return NextResponse.json({ ok: true, status: updated.status });
   } catch (err) {

@@ -49,6 +49,8 @@ export async function POST(req: Request) {
       : [];
     const availability = String(body?.availability ?? "").trim();
     const bio = String(body?.bio ?? "").trim();
+    const experience = String(body?.experience ?? "").trim();
+    const serviceAreas = String(body?.service_areas ?? "").trim();
     const photoUrl = String(body?.photo_url ?? "").trim() || null;
     const published = body?.published === true;
 
@@ -60,6 +62,11 @@ export async function POST(req: Request) {
     }
 
     const existing = await getListingByUserId(user.id);
+    // The application photo lives on the listing and is never edited in
+    // the form: keep the stored one, or backfill it from the approved
+    // application when the listing has none yet.
+    let photoData = existing?.photo_data ?? null;
+    if (!photoData && app.photo_data) photoData = app.photo_data;
     const listing = await upsertListing(
       existing?.id ?? randomUUID(),
       user.id,
@@ -69,7 +76,10 @@ export async function POST(req: Request) {
         looks,
         availability,
         bio,
+        experience,
+        service_areas: serviceAreas,
         photo_url: photoUrl,
+        photo_data: photoData,
         published,
       }
     );

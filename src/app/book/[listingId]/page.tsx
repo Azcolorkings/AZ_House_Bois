@@ -132,16 +132,21 @@ export default async function BookPage({
       <div className="container" style={{ maxWidth: 780 }}>
         <h2>Book {listing.display_name}</h2>
         <div className="card" style={{ marginTop: 20 }}>
-          {listing.photo_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={listing.photo_url}
-              alt={listing.display_name}
-              style={{ width: 120, height: 120, objectFit: "cover", borderRadius: 12 }}
-            />
-          ) : (
-            <div className="avatar" aria-hidden="true">🔥</div>
-          )}
+          {(() => {
+            // Same rule as the roster: the pasted photo URL wins,
+            // otherwise the photo from the application.
+            const photoSrc = listing.photo_url || listing.photo_data;
+            return photoSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={photoSrc}
+                alt={listing.display_name}
+                style={{ width: 120, height: 120, objectFit: "cover", borderRadius: 12 }}
+              />
+            ) : (
+              <div className="avatar" aria-hidden="true">🔥</div>
+            );
+          })()}
           <h3 style={{ marginTop: 12 }}>{listing.display_name}</h3>
           <p className="muted" style={{ margin: "4px 0" }}>📍 {listing.city}</p>
           <p>

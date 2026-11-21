@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { sql } from "@vercel/postgres";
 
 // Vercel's Neon Postgres integration exposes DATABASE_URL; @vercel/postgres
@@ -36,7 +37,13 @@ export interface ListingRow {
   looks: string[];
   availability: string;
   bio: string;
+  /** Cleaning experience, prefilled from the approved application; the boi can edit it in the listing form. */
+  experience: string;
+  /** Service areas, prefilled from the approved application; the boi can edit it in the listing form. */
+  service_areas: string;
   photo_url: string | null;
+  /** Profile photo from the approved application (data URL). The pasted photo_url wins when set; otherwise this is the roster photo. */
+  photo_data: string | null;
   published: boolean;
   created_at: string;
   updated_at: string;
@@ -120,12 +127,23 @@ export async function ensureSchema() {
       looks TEXT NOT NULL DEFAULT '[]',
       availability TEXT NOT NULL DEFAULT '',
       bio TEXT NOT NULL DEFAULT '',
+      experience TEXT NOT NULL DEFAULT '',
+      service_areas TEXT NOT NULL DEFAULT '',
       photo_url TEXT,
+      photo_data TEXT,
       published BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(user_id)
     );
+  `;
+  // Experience / service areas / application photo were added Nov 21, 2026;
+  // a deployment created before that has the table without them.
+  await sql`
+    ALTER TABLE listings
+      ADD COLUMN IF NOT EXISTS experience TEXT NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS service_areas TEXT NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS photo_data TEXT
   `;
   await sql`
     CREATE TABLE IF NOT EXISTS applications (
@@ -356,26 +374,89 @@ export async function upsertListing(
     looks: string[];
     availability: string;
     bio: string;
+    experience: string;
+    service_areas: string;
     photo_url: string | null;
+    photo_data: string | null;
     published: boolean;
   }
 ): Promise<ListingRow> {
   await ensureSchema();
   const { rows } = await sql<ListingRow>`
-    INSERT INTO listings (id, user_id, display_name, city, looks, availability, bio, photo_url, published)
-    VALUES (${id}, ${userId}, ${data.display_name}, ${data.city}, ${JSON.stringify(data.looks)}, ${data.availability}, ${data.bio}, ${data.photo_url}, ${data.published})
+    INSERT INTO listings (id, user_id, display_name, city, looks, availability, bio, experience, service_areas, photo_url, photo_data, published)
+    VALUES (${id}, ${userId}, ${data.display_name}, ${data.city}, ${JSON.stringify(data.looks)}, ${data.availability}, ${data.bio}, ${data.experience}, ${data.service_areas}, ${data.photo_url}, ${data.photo_data}, ${data.published})
     ON CONFLICT (user_id) DO UPDATE SET
       display_name = EXCLUDED.display_name,
       city = EXCLUDED.city,
       looks = EXCLUDED.looks,
       availability = EXCLUDED.availability,
       bio = EXCLUDED.bio,
+      experience = EXCLUDED.experience,
+      service_areas = EXCLUDED.service_areas,
       photo_url = EXCLUDED.photo_url,
+      photo_data = EXCLUDED.photo_data,
       published = EXCLUDED.published,
       updated_at = NOW()
     RETURNING *
   `;
   return parseListing(rows[0]);
+}
+
+// Roster cities, shared by the roster filter and the listing form. Used
+// here only to pick a listing city out of free-text service areas.
+const ROSTER_CITIES = [
+  "Phoenix", "Scottsdale", "Paradise Valley", "Tempe", "Mesa", "Chandler",
+  "Gilbert", "Glendale", "Peoria", "Surprise", "Goodyear", "Queen Creek",
+  "Tucson", "Oro Valley", "Flagstaff", "Sedona", "Prescott", "Lake Havasu", "Yuma",
+];
+
+/** First service area that matches a known roster city, else Phoenix. */
+function cityFromServiceAreas(serviceAreas: string): string {
+  const areas = serviceAreas.split(",").map((a) => a.trim().toLowerCase()).filter(Boolean);
+  for (const area of areas) {
+    const match = ROSTER_CITIES.find((c) => c.toLowerCase() === area);
+    if (match) return match;
+  }
+  return "Phoenix";
+}
+
+/**
+ * Prefill a boi's listing from their approved application — experience,
+ * service areas, and profile photo. Only those three application fields
+ * ever carry over; SSN, ID, address, and everything else stays in the
+ * application. Called when Steven approves an application.
+ *
+ * Creates an unpublished draft when the boi has no listing yet. When a
+ * listing already exists it is never overwritten — only the application
+ * photo is backfilled when the listing has none, so the boi's own edits
+ * always win. The boi edits all three fields in the listing form.
+ */
+export async function prefillListingFromApplication(
+  app: ApplicationRow
+): Promise<ListingRow | null> {
+  await ensureSchema();
+  const existing = await getListingByUserId(app.user_id);
+  if (existing) {
+    if (!existing.photo_data && app.photo_data) {
+      return upsertListing(existing.id, app.user_id, {
+        ...existing,
+        photo_data: app.photo_data,
+      });
+    }
+    return existing;
+  }
+  return upsertListing(randomUUID(), app.user_id, {
+    display_name: app.legal_name,
+    city: cityFromServiceAreas(app.service_areas),
+    looks: ["Classic Boi"],
+    availability: app.availability,
+    bio: "",
+    experience: app.experience,
+    service_areas: app.service_areas,
+    photo_url: null,
+    photo_data: app.photo_data,
+    published: false,
+  });
 }
 
 export async function getListingById(

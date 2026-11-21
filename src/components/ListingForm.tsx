@@ -16,6 +16,8 @@ export default function ListingForm({ existing }: { existing: ListingRow | null 
   const [looks, setLooks] = useState<string[]>(existing?.looks ?? ["Classic Boi"]);
   const [availability, setAvailability] = useState(existing?.availability ?? "Weekly");
   const [bio, setBio] = useState(existing?.bio ?? "");
+  const [experience, setExperience] = useState(existing?.experience ?? "");
+  const [serviceAreas, setServiceAreas] = useState(existing?.service_areas ?? "");
   const [photoUrl, setPhotoUrl] = useState(existing?.photo_url ?? "");
   const [published, setPublished] = useState(existing?.published ?? false);
   const [message, setMessage] = useState("");
@@ -42,6 +44,8 @@ export default function ListingForm({ existing }: { existing: ListingRow | null 
         looks,
         availability,
         bio,
+        experience,
+        service_areas: serviceAreas,
         photo_url: photoUrl || null,
         published,
       }),
@@ -106,14 +110,54 @@ export default function ListingForm({ existing }: { existing: ListingRow | null 
         onChange={(e) => setBio(e.target.value)}
         placeholder="A couple of lines: your vibe, what you're great at cleaning, the areas you'll travel to."
       />
+      <label htmlFor="experience">Cleaning experience</label>
+      <textarea
+        id="experience"
+        rows={3}
+        value={experience}
+        onChange={(e) => setExperience(e.target.value)}
+        placeholder="Filled in from your application — edit it anytime. e.g. 2 years cleaning houses and apartments."
+      />
+      <label htmlFor="service_areas">Service areas</label>
+      <input
+        id="service_areas"
+        value={serviceAreas}
+        onChange={(e) => setServiceAreas(e.target.value)}
+        placeholder="Filled in from your application — e.g. Mesa, Tempe, Phoenix"
+      />
+      {(() => {
+        // The pasted URL wins; otherwise the photo from the application
+        // is the roster photo.
+        const previewSrc = photoUrl || existing?.photo_data || null;
+        if (!previewSrc) return null;
+        return (
+          <div style={{ marginTop: 4 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={previewSrc}
+              alt="Your roster photo"
+              style={{ width: 120, height: 120, objectFit: "cover", borderRadius: 12 }}
+            />
+            <p className="small muted" style={{ margin: "6px 0 0" }}>
+              {photoUrl
+                ? "Showing your photo URL."
+                : "Showing your application photo — paste a URL below to use a different photo instead."}
+            </p>
+          </div>
+        );
+      })()}
       <label htmlFor="photo_url">Photo URL (optional)</label>
       <input
         id="photo_url"
         type="url"
         value={photoUrl}
         onChange={(e) => setPhotoUrl(e.target.value)}
-        placeholder="https://… link to a photo of you"
+        placeholder="https://… link to a photo of you — overrides your application photo"
       />
+      <p className="small muted" style={{ margin: "4px 0 0" }}>
+        Leave this empty to keep your application photo. Clear it to go back
+        to your application photo.
+      </p>
       <label style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700 }}>
         <input
           type="checkbox"
