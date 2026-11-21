@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { randomUUID } from "crypto";
 import { auth } from "@/lib/auth";
 import {
@@ -8,6 +8,8 @@ import {
 } from "@/lib/db";
 import { AGREEMENT_TEXT } from "@/lib/agreement";
 import { encryptSecret, decryptSecret, isValidSsn, maskSsn, normalizeSsn } from "@/lib/crypto";
+import { isAtLeast18 } from "@/lib/age";
+import { notifyNewApplication } from "@/lib/notify";
 
 const MAX_UPLOAD_BYTES = 3 * 1024 * 1024; // 3 MB per image, before base64
 
@@ -111,6 +113,14 @@ export async function POST(req: Request) {
       );
     }
 
+    // 18+ only — real age, month and day included, not just the birth year.
+    if (!isAtLeast18(dob)) {
+      return NextResponse.json(
+        { error: "You have to be 18 or older to apply." },
+        { status: 400 }
+      );
+    }
+
     if (!isValidSsn(ssnRaw)) {
       return NextResponse.json(
         { error: "Enter a valid 9-digit SSN." },
@@ -163,6 +173,17 @@ export async function POST(req: Request) {
       agreement_signature: signature,
       agreement_signed_at: new Date().toISOString(),
     });
+
+    // Tell Steven a cleaner applied. Runs after the response goes out and
+    // never blocks or breaks the application if email is not set up.
+    after(() =>
+      notifyNewApplication({
+        legalName,
+        email: user.email,
+        phone,
+        serviceAreas,
+      })
+    );
 
     return NextResponse.json({ ok: true, status: app.status });
   } catch (err) {

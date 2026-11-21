@@ -6,6 +6,7 @@ import {
   signHomeownerAgreement,
 } from "@/lib/db";
 import { HOMEOWNER_AGREEMENT_TEXT } from "@/lib/homeowner-agreement";
+import { isAtLeast18 } from "@/lib/age";
 
 /** The homeowner's own agreement status — signature itself never leaves the server. */
 export async function GET() {
@@ -51,6 +52,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const signature = String(body?.signature ?? "").trim();
     const agreed = body?.agreed === true;
+    const dob = String(body?.dob ?? "").trim();
 
     if (!agreed) {
       return NextResponse.json(
@@ -64,11 +66,24 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    if (!dob) {
+      return NextResponse.json(
+        { error: "Enter your date of birth." },
+        { status: 400 }
+      );
+    }
+    if (!isAtLeast18(dob)) {
+      return NextResponse.json(
+        { error: "You have to be 18 or older to sign the homeowner agreement." },
+        { status: 400 }
+      );
+    }
 
     const signed = await signHomeownerAgreement(user.id, {
       text: HOMEOWNER_AGREEMENT_TEXT,
       signature,
       signedAt: new Date().toISOString(),
+      dob,
     });
     if (!signed) {
       return NextResponse.json({ error: "Account not found." }, { status: 404 });

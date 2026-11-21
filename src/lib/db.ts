@@ -21,6 +21,8 @@ export interface UserRow {
   homeowner_agreement_text: string | null;
   homeowner_agreement_signature: string | null;
   homeowner_agreement_signed_at: string | null;
+  /** Homeowner date of birth (YYYY-MM-DD) for the 18+ rule. Null for bois and for homeowners who signed before this was collected. */
+  dob: string | null;
   created_at: string;
 }
 
@@ -97,6 +99,10 @@ export async function ensureSchema() {
       ADD COLUMN IF NOT EXISTS homeowner_agreement_signature TEXT,
       ADD COLUMN IF NOT EXISTS homeowner_agreement_signed_at TIMESTAMPTZ
   `;
+  // Homeowner date of birth for the 18+ rule (added Nov 21, 2026).
+  await sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS dob TEXT
+  `;
   await sql`
     CREATE TABLE IF NOT EXISTS listings (
       id TEXT PRIMARY KEY,
@@ -167,20 +173,23 @@ export async function createUser(
     text: string;
     signature: string;
     signedAt: string;
-  }
+  },
+  /** Homeowner date of birth (YYYY-MM-DD) for the 18+ rule. Only collected for homeowners. */
+  dob?: string | null
 ): Promise<UserRow> {
   await ensureSchema();
   const { rows } = await sql<UserRow>`
     INSERT INTO users (
       id, email, password_hash, role,
       homeowner_agreement_text, homeowner_agreement_signature,
-      homeowner_agreement_signed_at
+      homeowner_agreement_signed_at, dob
     )
     VALUES (
       ${id}, ${email}, ${passwordHash}, ${role},
       ${homeownerAgreement?.text ?? null},
       ${homeownerAgreement?.signature ?? null},
-      ${homeownerAgreement?.signedAt ?? null}
+      ${homeownerAgreement?.signedAt ?? null},
+      ${dob ?? null}
     )
     RETURNING *
   `;
@@ -197,14 +206,15 @@ export function hasSignedHomeownerAgreement(user: UserRow): boolean {
 /** Record a homeowner's signed agreement. One signature per account. */
 export async function signHomeownerAgreement(
   userId: string,
-  data: { text: string; signature: string; signedAt: string }
+  data: { text: string; signature: string; signedAt: string; dob?: string | null }
 ): Promise<UserRow | null> {
   await ensureSchema();
   const { rows } = await sql<UserRow>`
     UPDATE users SET
       homeowner_agreement_text = ${data.text},
       homeowner_agreement_signature = ${data.signature},
-      homeowner_agreement_signed_at = ${data.signedAt}
+      homeowner_agreement_signed_at = ${data.signedAt},
+      dob = COALESCE(${data.dob ?? null}, dob)
     WHERE id = ${userId}
     RETURNING *
   `;

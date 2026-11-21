@@ -2,21 +2,28 @@
 
 import { useState } from "react";
 import { HOMEOWNER_AGREEMENT_TEXT } from "@/lib/homeowner-agreement";
+import { isAtLeast18 } from "@/lib/age";
 
 /**
- * The agreement text + checkbox + typed signature, controlled by the parent.
- * Used on the signup page (homeowners sign as they create the account).
+ * The agreement text + checkbox + typed signature + date of birth,
+ * controlled by the parent. Used on the signup page (homeowners sign as
+ * they create the account) and on the dashboard (homeowners who signed up
+ * before the agreement existed). The date of birth enforces the 18+ rule.
  */
 export function HomeownerAgreementBlock({
   agreed,
   setAgreed,
   signature,
   setSignature,
+  dob,
+  setDob,
 }: {
   agreed: boolean;
   setAgreed: (v: boolean) => void;
   signature: string;
   setSignature: (v: string) => void;
+  dob: string;
+  setDob: (v: string) => void;
 }) {
   return (
     <>
@@ -56,6 +63,15 @@ export function HomeownerAgreementBlock({
         autoComplete="off"
         placeholder="Your full name"
       />
+      <label htmlFor="homeowner_dob">Date of birth</label>
+      <input
+        id="homeowner_dob"
+        type="date"
+        value={dob}
+        onChange={(e) => setDob(e.target.value)}
+        required
+      />
+      <p className="small muted">You must be 18 or older.</p>
       <p className="small muted">
         Signed today,{" "}
         {new Date().toLocaleDateString("en-US", {
@@ -77,6 +93,7 @@ export function HomeownerAgreementBlock({
 export default function HomeownerAgreementSignForm() {
   const [agreed, setAgreed] = useState(false);
   const [signature, setSignature] = useState("");
+  const [dob, setDob] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -84,10 +101,15 @@ export default function HomeownerAgreementSignForm() {
     e.preventDefault();
     setBusy(true);
     setError("");
+    if (!isAtLeast18(dob)) {
+      setError("You have to be 18 or older to sign the homeowner agreement.");
+      setBusy(false);
+      return;
+    }
     const res = await fetch("/api/homeowner-agreement", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ signature, agreed }),
+      body: JSON.stringify({ signature, agreed, dob }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -105,6 +127,8 @@ export default function HomeownerAgreementSignForm() {
         setAgreed={setAgreed}
         signature={signature}
         setSignature={setSignature}
+        dob={dob}
+        setDob={setDob}
       />
       {error && (
         <div className="error" role="alert">

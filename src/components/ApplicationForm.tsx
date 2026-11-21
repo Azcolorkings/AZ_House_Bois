@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AGREEMENT_TEXT } from "@/lib/agreement";
+import { isAtLeast18 } from "@/lib/age";
 
 const AVAILABILITY = [
   "Weekly",
@@ -71,6 +72,11 @@ export default function ApplicationForm() {
     e.preventDefault();
     setBusy(true);
     setError("");
+    if (!isAtLeast18(dob)) {
+      setError("You have to be 18 or older to apply.");
+      setBusy(false);
+      return;
+    }
     const res = await fetch("/api/applications", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -149,6 +155,7 @@ export default function ApplicationForm() {
         onChange={(e) => setDob(e.target.value)}
         required
       />
+      <p className="small muted">You must be 18 or older.</p>
       <label htmlFor="address">Address</label>
       <input
         id="address"

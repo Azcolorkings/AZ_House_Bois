@@ -5,6 +5,7 @@ import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { HomeownerAgreementBlock } from "@/components/HomeownerAgreementForm";
+import { isAtLeast18 } from "@/lib/age";
 
 function SignupForm() {
   const params = useSearchParams();
@@ -14,6 +15,7 @@ function SignupForm() {
   const [password, setPassword] = useState("");
   const [homeownerAgreed, setHomeownerAgreed] = useState(false);
   const [homeownerSignature, setHomeownerSignature] = useState("");
+  const [homeownerDob, setHomeownerDob] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -21,6 +23,11 @@ function SignupForm() {
     e.preventDefault();
     setBusy(true);
     setError("");
+    if (role === "client" && !isAtLeast18(homeownerDob)) {
+      setError("You have to be 18 or older to create a homeowner account.");
+      setBusy(false);
+      return;
+    }
     const res = await fetch("/api/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -30,6 +37,7 @@ function SignupForm() {
         role,
         homeowner_agreement_signature: homeownerSignature,
         homeowner_agreed: homeownerAgreed,
+        dob: homeownerDob,
       }),
     });
     const data = await res.json();
@@ -89,6 +97,8 @@ function SignupForm() {
           setAgreed={setHomeownerAgreed}
           signature={homeownerSignature}
           setSignature={setHomeownerSignature}
+          dob={homeownerDob}
+          setDob={setHomeownerDob}
         />
       )}
       {error && <div className="error" role="alert">{error}</div>}

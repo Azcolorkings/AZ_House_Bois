@@ -90,6 +90,65 @@ Tables are created on first use by the app itself (`ensureSchema()` in
 | `STRIPE_PRICE_BOI` | `price_1Udv0xCuX2Dc2d82PcrJlNLu` — $20/month boi listing, created 2026-11-20 on the AZ House Bois account (acct_1UduowCuX2Dc2d82). |
 | `NEXT_PUBLIC_APP_URL` | The deployed URL, e.g. `https://az-house-bois.vercel.app` |
 | `ADMIN_EMAIL` | Email allowed to review cleaner applications at `/admin/applications` (approve/deny, sees decrypted SSNs for 1099 filing). Defaults to `stevendrice2992@gmail.com` if unset. |
+| `RESEND_API_KEY` | Resend API key for admin email notifications (see 3d). Leave unset and the app works exactly as before — notifications just don't send. |
+| `NOTIFY_EMAIL` | Who gets the notification emails. Optional; defaults to `stevendrice2992@gmail.com`. |
+
+## 3d. Admin email notifications (added 2026-11-21)
+
+Steven gets an email the moment someone signs up or a cleaner applies,
+so he doesn't have to keep checking the admin page:
+
+- New account → "New AZ House Bois signup — {email} ({Homeowner / Cleaner (boi)})"
+- New cleaner application → "New cleaner application — {legal name}" with
+  the applicant's name, email, phone, service areas, and a link to
+  `/admin/applications`.
+
+How it works: `src/lib/notify.ts` sends through **Resend** (`resend`
+package). The helper is fail-soft by design — if `RESEND_API_KEY` is
+missing or the send fails, it logs the error and returns; the signup or
+application still succeeds. The calls run via Next.js `after()` so they
+never delay the response. **No secrets in code** — the key lives only in
+the Vercel env var.
+
+Steven's setup steps (his step — the key is his Resend account):
+
+1. Create a free account at https://resend.com with
+   `stevendrice2992@gmail.com`.
+2. Dashboard → API Keys → create an API key (any name, e.g. "AZ House Bois").
+3. In Vercel (project `az-house-bois` → Settings → Environment
+   Variables) add `RESEND_API_KEY` = the key, Production scope, and
+   redeploy. `NOTIFY_EMAIL` is optional — it defaults to
+   `stevendrice2992@gmail.com`.
+4. Until the key is set, **nothing changes** — signups and applications
+   work exactly as before, just without the emails.
+
+Why the sender is `onboarding@resend.dev`: Resend's free tier lets you
+send from that address with no verified domain, as long as the recipient
+is the account owner's own email (which is why the default recipient is
+Steven's Gmail). If a custom domain is ever verified, change the `from`
+in `src/lib/notify.ts` and update this doc.
+
+## 3e. 18+ enforcement (added 2026-11-21)
+
+Both sides must be 18 or older. The agreement texts already said 18+;
+now it is actually enforced:
+
+- **Cleaners:** `POST /api/applications` parses the application's date
+  of birth and rejects with a 400 if the applicant is under 18. The age
+  math is in `src/lib/age.ts` (`isAtLeast18`) — month and day count, not
+  just the birth year. The apply form (`ApplicationForm.tsx`) checks the
+  same thing before submitting, but the server check is the real gate.
+- **Homeowners:** signup never collected a date of birth before, so a
+  DOB field was added to the homeowner agreement block
+  (`HomeownerAgreementForm.tsx`), which is shown both on the signup page
+  and on the dashboard sign form for older accounts. The DOB is stored on
+  the `users` record (`dob` column, added with `ADD COLUMN IF NOT
+  EXISTS` in `ensureSchema()`, same pattern as the agreement columns).
+  `POST /api/signup` and `POST /api/homeowner-agreement` both reject
+  with a 400 when the homeowner is under 18. Cleaners are NOT asked for
+  a DOB at signup — their age is enforced at application time.
+- Homeowners who signed the agreement before this change have no DOB on
+  record; they are not re-checked. New signups and new signatures are.
 
 ## 3b. Cleaner application flow (added 2026-11-21)
 
