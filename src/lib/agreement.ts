@@ -22,18 +22,21 @@ I am applying to work as an independent contractor — a 1099 contractor — not
 2. THE JOB IS STRICTLY CLEANING
 My job is cleaning homes. That is the whole job. I clean, I leave, I get paid for cleaning.
 
-3. NO FRATERNIZING WITH CLIENTS
+3. I BRING MY OWN CLEANING SUPPLIES
+I bring my own cleaning supplies to every job — my own cleaning products, tools, and equipment. The only exception is if the homeowner tells AZ House Bois ahead of time that they have their own supplies for me to use. If nobody told me that ahead of time, I show up with my own supplies.
+
+4. NO FRATERNIZING WITH CLIENTS
 I will not flirt with, date, hook up with, or pursue any kind of personal or romantic contact with a client — and I will not accept or encourage that kind of contact from a client either. If a client crosses the line, I tell AZ House Bois. Breaking this rule ends my listing.
 
-4. HOW I GET PAID
+5. HOW I GET PAID
 I do not get paid by the client directly. AZ House Bois pays me. I get paid every two weeks (biweekly), after AZ House Bois gets paid. Cleaning fees are between the homeowner and AZ House Bois — I never ask a client to pay me on the side.
 
-5. THE LISTING FEE — $20 A MONTH, ONLY AFTER APPROVAL
+6. THE LISTING FEE — $20 A MONTH, ONLY AFTER APPROVAL
 Listing my profile on AZ House Bois costs $20 per month. I pay NOTHING to apply, and I pay NOTHING unless my application is approved. The $20/month starts only after I am approved, and I can cancel anytime. If my application is denied, I owe nothing.
 
-6. HONESTY
+7. HONESTY
 I am 18 years or older. Everything in my application is true and complete to the best of my knowledge. If anything in it turns out to be false, AZ House Bois can end my listing at any time.
 
 I have read this agreement and I agree to all of it.`;
 
-export const AGREEMENT_VERSION = "2026-11-21";
+export const AGREEMENT_VERSION = "2026-11-21-supplies";
