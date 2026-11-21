@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
-import { getListingByUserId, getUserById } from "@/lib/db";
+import { getApplicationByUserId, getListingByUserId, getUserById } from "@/lib/db";
 import SubscribeButton from "@/components/SubscribeButton";
 import ManageBillingButton from "@/components/ManageBillingButton";
 import ListingForm from "@/components/ListingForm";
@@ -29,6 +29,9 @@ export default async function Dashboard({
 
   const isActive = user.subscription_status === "active";
   const listing = user.role === "boi" ? await getListingByUserId(user.id) : null;
+  const application =
+    user.role === "boi" ? await getApplicationByUserId(user.id) : null;
+  const isApproved = application?.status === "approved";
 
   return (
     <section className="section">
@@ -43,6 +46,49 @@ export default async function Dashboard({
           <div className="success" role="status">
             Welcome aboard — your subscription is being confirmed. If the
             roster still looks locked, give it a minute and refresh.
+          </div>
+        )}
+
+        {user.role === "boi" && (
+          <div className="card" style={{ marginTop: 20 }}>
+            <h3>Your application</h3>
+            {!application && (
+              <>
+                <p className="muted">
+                  Before you can list, fill out the cleaner application — job
+                  details, your ID, and the contractor agreement. It costs
+                  nothing to apply, and the $20/month listing fee only starts
+                  after you&apos;re approved.
+                </p>
+                <Link href="/apply" className="btn btn-brand">
+                  Fill out my application →
+                </Link>
+              </>
+            )}
+            {application?.status === "pending" && (
+              <p className="muted">
+                Your application (as <strong>{application.legal_name}</strong>
+                ) is under review. You don&apos;t owe anything while you wait
+                — the $20/month listing fee only starts after approval.
+              </p>
+            )}
+            {application?.status === "denied" && (
+              <>
+                <p className="muted">
+                  Your application was not approved. You can apply again with
+                  updated information — applying is free.
+                </p>
+                <Link href="/apply" className="btn btn-brand">
+                  Apply again →
+                </Link>
+              </>
+            )}
+            {application?.status === "approved" && (
+              <p className="muted">
+                ✓ Your application is approved. Subscribe below to start your
+                $20/month listing.
+              </p>
+            )}
           </div>
         )}
 
@@ -71,6 +117,14 @@ export default async function Dashboard({
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
             {isActive ? (
               <ManageBillingButton />
+            ) : user.role === "boi" && !isApproved ? (
+              <p className="muted" style={{ margin: 0 }}>
+                {application?.status === "pending"
+                  ? "Subscribe opens up once your application is approved."
+                  : application?.status === "denied"
+                    ? "Apply again above — subscribing opens up once an application is approved."
+                    : "Apply above first — subscribing opens up once your application is approved."}
+              </p>
             ) : (
               <SubscribeButton
                 role={user.role}
@@ -86,7 +140,7 @@ export default async function Dashboard({
         {user.role === "boi" && (
           <div className="card" style={{ marginTop: 20 }}>
             <h3>Your listing</h3>
-            {isActive ? (
+            {isActive && isApproved ? (
               <>
                 <p className="muted">
                   This is what homeowners see on the roster. Publish it when
@@ -96,9 +150,9 @@ export default async function Dashboard({
               </>
             ) : (
               <p className="muted">
-                Subscribe for $20/month to create and publish your listing.
-                Once your subscription is active, your listing editor appears
-                here.
+                {isApproved
+                  ? "Subscribe for $20/month to create and publish your listing. Once your subscription is active, your listing editor appears here."
+                  : "Your listing editor appears here once your application is approved and your $20/month subscription is active."}
               </p>
             )}
           </div>

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { auth } from "@/lib/auth";
-import { getListingByUserId, getUserById, upsertListing } from "@/lib/db";
+import { getListingByUserId, getUserById, upsertListing, getApplicationByUserId } from "@/lib/db";
 
 const LOOKS = ["Classic Boi", "Desert Heat", "Poolside", "Sporty"];
 
-/** Create or update the signed-in boi's own listing. Requires an active boi subscription. */
+/** Create or update the signed-in boi's own listing. Requires an approved application AND an active boi subscription. */
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user?.id) {
@@ -16,6 +16,17 @@ export async function POST(req: Request) {
     if (!user || user.role !== "boi") {
       return NextResponse.json(
         { error: "Only boi accounts can post a listing." },
+        { status: 403 }
+      );
+    }
+    const app = await getApplicationByUserId(user.id);
+    if (!app || app.status !== "approved") {
+      return NextResponse.json(
+        {
+          error:
+            "Your cleaner application has to be approved before you can post a listing.",
+          code: "application-required",
+        },
         { status: 403 }
       );
     }

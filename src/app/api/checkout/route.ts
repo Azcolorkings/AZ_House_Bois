@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getStripe, priceIdForRole, priceConfigured } from "@/lib/stripe";
-import { getUserById, updateUserStripe } from "@/lib/db";
+import { getUserById, updateUserStripe, getApplicationByUserId } from "@/lib/db";
 
 /**
  * Creates a Stripe Checkout session for a $20/month recurring subscription.
@@ -35,6 +35,26 @@ export async function POST(req: Request) {
     const user = await getUserById(session.user.id);
     if (!user) {
       return NextResponse.json({ error: "Account not found." }, { status: 404 });
+    }
+
+    // Cleaners only pay after their application is approved — nobody pays
+    // to list before they've been accepted.
+    if (role === "boi") {
+      const app = await getApplicationByUserId(user.id);
+      if (!app || app.status !== "approved") {
+        return NextResponse.json(
+          {
+            error:
+              app?.status === "pending"
+                ? "Your cleaner application is still under review. You'll be able to subscribe once it's approved — you won't be charged before then."
+                : app?.status === "denied"
+                  ? "Your cleaner application was not approved. You can apply again from your dashboard — there's no charge to apply."
+                  : "Cleaners apply first. Fill out the application and once it's approved you can subscribe to list.",
+            code: "application-required",
+          },
+          { status: 403 }
+        );
+      }
     }
 
     let customerId = user.stripe_customer_id;

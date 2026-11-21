@@ -1,3 +1,4 @@
+import Link from "next/link";
 import SubscribeButton from "@/components/SubscribeButton";
 
 export default function Pricing() {
@@ -35,6 +36,7 @@ export default function Pricing() {
               $20<span className="muted" style={{ fontSize: "1rem" }}>/month</span>
             </p>
             <ul className="checklist">
+              <li>Apply first — applications are reviewed, and you only pay after you&apos;re approved</li>
               <li>Publish your profile to paying homeowners statewide</li>
               <li>Photos, city, looks &amp; availability on your listing</li>
               <li>Regular, recurring clients — not one-off gigs</li>
@@ -43,6 +45,10 @@ export default function Pricing() {
             </ul>
             <div style={{ marginTop: 20 }}>
               <SubscribeButton role="boi" label="Subscribe — $20/month" className="btn btn-teal" />
+              <p className="small muted" style={{ marginTop: 10 }}>
+                Cleaners fill out an application first — the $20/month starts
+                only after approval. <Link href="/apply">Apply to clean →</Link>
+              </p>
             </div>
           </div>
         </div>

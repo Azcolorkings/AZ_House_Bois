@@ -89,6 +89,33 @@ Tables are created on first use by the app itself (`ensureSchema()` in
 | `STRIPE_PRICE_CLIENT` | `price_1Udv0xCuX2Dc2d82luX34BmI` — $20/month homeowner membership, created 2026-11-20 on the AZ House Bois account (acct_1UduowCuX2Dc2d82). |
 | `STRIPE_PRICE_BOI` | `price_1Udv0xCuX2Dc2d82PcrJlNLu` — $20/month boi listing, created 2026-11-20 on the AZ House Bois account (acct_1UduowCuX2Dc2d82). |
 | `NEXT_PUBLIC_APP_URL` | The deployed URL, e.g. `https://az-house-bois.vercel.app` |
+| `ADMIN_EMAIL` | Email allowed to review cleaner applications at `/admin/applications` (approve/deny, sees decrypted SSNs for 1099 filing). Defaults to `stevendrice2992@gmail.com` if unset. |
+
+## 3b. Cleaner application flow (added 2026-11-21)
+
+Cleaners (bois) apply before they can list or pay anything:
+
+1. Sign up as a boi → sent to `/apply` (homeowners still go to `/pricing`).
+2. Application form: full legal name, date of birth, address, phone, SSN
+   (encrypted at rest with AES-256-GCM, key derived from `AUTH_SECRET` —
+   never stored or logged in plaintext), emergency contact, cleaning
+   experience, availability, service areas, profile photo, and a photo ID
+   upload ("Upload your ID").
+3. The cleaner reads and signs the Independent Contractor Agreement
+   (text in `src/lib/agreement.ts`): no fraternizing with clients, strictly
+   cleaning, 1099 contractor not employee, paid biweekly after the company
+   gets paid. Signature = typed full legal name + date + checkbox.
+4. **The $20/month listing fee is stated up front on the application page
+   and in the agreement** — cleaners pay nothing to apply and nothing until
+   approved, so nobody is surprised by the fee later.
+5. Status starts as `pending`. Steven reviews at `/admin/applications`
+   (gated to `ADMIN_EMAIL`) and approves or denies each one. Denied
+   cleaners can re-apply; re-applying resets the status to pending.
+6. Only AFTER approval can a cleaner start the $20/month boi subscription
+   (`/api/checkout` and `/api/listings` both enforce this server-side) and
+   create/publish a listing. Clients are unaffected.
+7. Tables: `applications` is auto-created by `ensureSchema()` in
+   `src/lib/db.ts` like `users` and `listings`. No manual migration.
 
 ## 4. Stripe setup (correct account only)
 

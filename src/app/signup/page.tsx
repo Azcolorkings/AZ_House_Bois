@@ -38,7 +38,9 @@ function SignupForm() {
       window.location.href = "/login";
       return;
     }
-    window.location.href = "/pricing";
+    // Cleaners apply first — they only pay the $20/month listing fee after
+    // their application is approved. Homeowners go straight to pricing.
+    window.location.href = role === "boi" ? "/apply" : "/pricing";
   }
 
   return (
@@ -65,7 +67,7 @@ function SignupForm() {
       <p className="small muted">
         {role === "client"
           ? "Homeowners subscribe for $20/month to browse the roster and book bois."
-          : "Bois subscribe for $20/month to post their profile and get booked."}
+          : "Bois apply first — fill out the application and sign the contractor agreement. You only pay the $20/month listing fee after you're approved. Applying is free."}
       </p>
       <label htmlFor="email">Email</label>
       <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
@@ -88,7 +90,7 @@ export default function SignupPage() {
     <section className="section">
       <div className="container" style={{ maxWidth: 560 }}>
         <h2>Join AZ House Bois</h2>
-        <p className="muted">Create your account, then subscribe — $20/month on either side.</p>
+        <p className="muted">Create your account, then subscribe — $20/month on either side. Cleaners apply first and only pay after approval.</p>
         <div style={{ marginTop: 20 }}>
           <Suspense>
             <SignupForm />
