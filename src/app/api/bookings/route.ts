@@ -3,12 +3,17 @@ import { randomUUID } from "crypto";
 import { auth } from "@/lib/auth";
 import { getStripe } from "@/lib/stripe";
 import {
+  createPayPalOrder,
+  isPayPalConfigured,
+} from "@/lib/paypal";
+import {
   createBooking,
   getApplicationByUserId,
   getListingById,
   getUserById,
   hasSignedHomeownerAgreement,
   setBookingCheckoutSession,
+  setBookingPayPalOrder,
   updateUserStripe,
 } from "@/lib/db";
 import {
@@ -27,8 +32,9 @@ import { notifyBoiNewBooking, notifyNewBooking } from "@/lib/notify";
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * Create a booking and start a one-time Stripe Checkout for it.
- * The amount is ALWAYS re-derived from src/lib/pricing.ts — a
+ * Create a booking and start a one-time payment for it — Stripe
+ * Checkout by default, or a PayPal order when the homeowner picks
+ * PayPal. The amount is ALWAYS re-derived from src/lib/pricing.ts — a
  * client-sent amount is never trusted. Payment covers the single
  * upcoming clean only; frequency is informational (no recurring billing).
  */
@@ -80,6 +86,21 @@ export async function POST(req: Request) {
   const serviceAddress = str(body?.service_address);
   const suppliesByHomeowner = body?.supplies_by_homeowner === true;
   const notes = str(body?.notes);
+  // "paypal" only when the homeowner picked it; anything else is Stripe.
+  const paymentProvider = body?.payment_provider === "paypal" ? "paypal" : "stripe";
+
+  // Fail before creating the booking when PayPal was picked but isn't
+  // set up — the homeowner can just pick the card option instead.
+  if (paymentProvider === "paypal" && !isPayPalConfigured()) {
+    return NextResponse.json(
+      {
+        error:
+          "PayPal checkout isn't set up yet — pay with a card for now, and PayPal will be an option soon.",
+        code: "paypal-not-configured",
+      },
+      { status: 503 }
+    );
+  }
 
   if (!listingId) {
     return NextResponse.json({ error: "Pick a boi to book." }, { status: 400 });
@@ -160,7 +181,54 @@ export async function POST(req: Request) {
       service_address: serviceAddress,
       supplies_by_homeowner: suppliesByHomeowner,
       notes,
+      payment_provider: paymentProvider,
     });
+
+    const details = {
+      serviceLabel: serviceLabel(service),
+      amount: formatCents(amountCents),
+      cleanerAmount: formatCents(split.cleaner),
+      date,
+      timeLabel: timeSlotLabel(timeSlot),
+      frequencyLabel: frequencyLabel(frequency),
+      address: serviceAddress,
+      suppliesByHomeowner,
+      notes,
+    };
+    // Emails run after the response goes out and never break the booking
+    // if Resend isn't set up. (Boi/homeowner mail only delivers once a
+    // domain is verified in Resend — see src/lib/notify.ts.)
+    const sendBookingEmails = () =>
+      after(() => {
+        void notifyNewBooking({
+          clientEmail: user.email,
+          boiName: listing.display_name,
+          bookingId: booking.id,
+          ...details,
+        });
+        void notifyBoiNewBooking({
+          boiEmail: boiUser.email,
+          clientEmail: user.email,
+          boiName: listing.display_name,
+          ...details,
+        });
+      });
+
+    // PayPal: create the order now; the homeowner approves and pays it
+    // in the PayPal button on the booking page, and the capture route
+    // marks the booking paid. No redirect to PayPal's site.
+    if (paymentProvider === "paypal") {
+      const order = await createPayPalOrder(amountCents, {
+        bookingId: booking.id,
+        description: `${serviceLabel(service)} — AZ House Bois · ${listing.display_name} · ${date} at ${timeSlotLabel(timeSlot)}`,
+      });
+      await setBookingPayPalOrder(booking.id, order.id);
+      sendBookingEmails();
+      return NextResponse.json({
+        paypal_order_id: order.id,
+        booking_id: booking.id,
+      });
+    }
 
     const stripe = getStripe();
     let customerId = user.stripe_customer_id;
@@ -201,34 +269,7 @@ export async function POST(req: Request) {
 
     await setBookingCheckoutSession(booking.id, checkout.id);
 
-    const details = {
-      serviceLabel: serviceLabel(service),
-      amount: formatCents(amountCents),
-      cleanerAmount: formatCents(split.cleaner),
-      date,
-      timeLabel: timeSlotLabel(timeSlot),
-      frequencyLabel: frequencyLabel(frequency),
-      address: serviceAddress,
-      suppliesByHomeowner,
-      notes,
-    };
-    // Emails run after the response goes out and never break the booking
-    // if Resend isn't set up. (Boi/homeowner mail only delivers once a
-    // domain is verified in Resend — see src/lib/notify.ts.)
-    after(() => {
-      void notifyNewBooking({
-        clientEmail: user.email,
-        boiName: listing.display_name,
-        bookingId: booking.id,
-        ...details,
-      });
-      void notifyBoiNewBooking({
-        boiEmail: boiUser.email,
-        clientEmail: user.email,
-        boiName: listing.display_name,
-        ...details,
-      });
-    });
+    sendBookingEmails();
 
     return NextResponse.json({ url: checkout.url, booking_id: booking.id });
   } catch (err) {

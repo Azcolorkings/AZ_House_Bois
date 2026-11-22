@@ -250,7 +250,18 @@ export default async function Dashboard({
           )}
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
             {isActive ? (
-              <ManageBillingButton />
+              // PayPal has no Customer Portal — subscribers manage or
+              // cancel in their PayPal account. Stripe subscribers keep
+              // the portal button. Pre-PayPal accounts (null provider)
+              // are Stripe accounts.
+              user.payment_provider === "paypal" ? (
+                <p className="muted small" style={{ margin: 0 }}>
+                  Paid with PayPal — manage or cancel your subscription in
+                  your PayPal account.
+                </p>
+              ) : (
+                <ManageBillingButton />
+              )
             ) : user.role === "boi" && !isApproved ? (
               <p className="muted" style={{ margin: 0 }}>
                 {application?.status === "pending"

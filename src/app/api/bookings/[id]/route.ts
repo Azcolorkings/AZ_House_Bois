@@ -1,6 +1,7 @@
 import { NextResponse, after } from "next/server";
 import { auth } from "@/lib/auth";
 import { getStripe } from "@/lib/stripe";
+import { refundPayPalCapture } from "@/lib/paypal";
 import {
   getBookingById,
   getListingById,
@@ -85,7 +86,10 @@ export async function PATCH(
 
       // decline
       let refunded = false;
-      if (booking.paid_at && booking.stripe_payment_intent_id) {
+      if (
+        booking.paid_at &&
+        (booking.stripe_payment_intent_id || booking.paypal_capture_id)
+      ) {
         refunded = await tryRefund(booking);
       } else {
         await setBookingRefund(booking.id, "not_required", false);
@@ -135,7 +139,10 @@ export async function PATCH(
 
     // requested (not yet confirmed)
     let refunded = false;
-    if (booking.paid_at && booking.stripe_payment_intent_id) {
+    if (
+      booking.paid_at &&
+      (booking.stripe_payment_intent_id || booking.paypal_capture_id)
+    ) {
       refunded = await tryRefund(booking);
     } else {
       await setBookingRefund(booking.id, "not_required", false);
@@ -156,8 +163,25 @@ export async function PATCH(
   }
 }
 
-/** Attempt a Stripe refund of the booking's payment. Never throws. */
+/** Attempt a refund of the booking's payment — Stripe or PayPal, by provider. Never throws. */
 async function tryRefund(booking: BookingRow): Promise<boolean> {
+  // PayPal: refund the capture. Same fail-soft rule as Stripe — a
+  // failed refund flags the booking and the admin refunds it by hand
+  // in PayPal; the booking change still goes through.
+  if (booking.payment_provider === "paypal" && booking.paypal_capture_id) {
+    try {
+      await refundPayPalCapture(booking.paypal_capture_id, booking.amount_cents);
+      await setBookingRefund(booking.id, "refunded", false);
+      return true;
+    } catch (err) {
+      console.error("booking paypal refund failed", {
+        bookingId: booking.id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+      await setBookingRefund(booking.id, "failed", true);
+      return false;
+    }
+  }
   try {
     const stripe = getStripe();
     await stripe.refunds.create({
@@ -208,8 +232,13 @@ async function notifyAdminRefundNeeded(
 ): Promise<boolean> {
   const client = await getUserById(booking.client_user_id);
   const listing = await getListingById(booking.listing_id);
+  const provider = booking.payment_provider === "paypal" ? "PayPal" : "Stripe";
+  const paymentRef =
+    booking.payment_provider === "paypal"
+      ? `PayPal capture: ${booking.paypal_capture_id ?? "unknown"}`
+      : `Payment intent: ${booking.stripe_payment_intent_id ?? "unknown"}`;
   const text = [
-    "A booking needs a manual refund in Stripe.",
+    `A booking needs a manual refund in ${provider}.`,
     "",
     `Booking: ${booking.id}`,
     `Reason: ${reason}`,
@@ -217,9 +246,9 @@ async function notifyAdminRefundNeeded(
     `Boi: ${listing?.display_name ?? booking.boi_user_id}`,
     `Service: ${serviceLabel(booking.service)} — ${formatCents(booking.amount_cents)}`,
     `When: ${booking.date} at ${timeSlotLabel(booking.time_slot)}`,
-    `Payment intent: ${booking.stripe_payment_intent_id ?? "unknown"}`,
+    paymentRef,
     "",
-    "Refund it in the Stripe Dashboard, then clear the flag on /admin/bookings.",
+    `Refund it in the ${provider} Dashboard, then clear the flag on /admin/bookings.`,
   ].join("\n");
   return sendAdminNotification(
     `Manual refund needed — booking ${booking.date} (${formatCents(booking.amount_cents)})`,

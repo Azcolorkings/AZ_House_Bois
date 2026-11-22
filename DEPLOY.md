@@ -433,6 +433,111 @@ Homeowners sign before they can see the roster or subscribe:
 - Money is formatted with the existing `formatCents()` from `src/lib/pricing.ts`. Existing dashboard content (account lists, suspend switches, nav cards) is unchanged below the Analytics section.
 - Unproven until the next deploy serves a request: the section rendering live with real data.
 
+### 3m. PayPal as a second payment option (added 2026-11-22)
+
+PayPal sits next to Stripe — same $20/month subscriptions, same
+one-time booking payments, same founding offer. Stripe is untouched
+and still the default; a buyer picks card (Stripe) or PayPal at
+checkout. Nothing is charged through PayPal until the credentials and
+billing plans below are set — until then the PayPal buttons hide
+themselves with a plain "PayPal checkout isn't set up yet" note and
+the site works exactly as before.
+
+**How it works (code, all in this repo):**
+
+- `src/lib/paypal.ts` — server-side REST helpers (plain fetch, no SDK
+  dependency): OAuth2 token, subscriptions, orders, capture, refund,
+  webhook signature verification. Reads `PAYPAL_CLIENT_ID`,
+  `PAYPAL_CLIENT_SECRET`, `PAYPAL_MODE` (live|sandbox, defaults to
+  sandbox), `PAYPAL_PLAN_CLIENT` / `PAYPAL_PLAN_BOI` ($20/month billing
+  plans, placeholders until real IDs exist — same pattern as the
+  Stripe price IDs). The secret never reaches the browser.
+- **Subscriptions** — `POST /api/paypal/subscriptions` (same gates as
+  the Stripe checkout route: homeowner agreement, approved boi
+  application, founding-spot check) creates a PayPal subscription via
+  the Subscriptions API and returns its id; the JS SDK button
+  (`src/components/PayPalButton.tsx`, `PayPalSubscribeButton.tsx`)
+  approves it in a PayPal popup; `POST
+  /api/paypal/subscriptions/confirm` fetches the subscription from
+  PayPal and only marks it active when PayPal says ACTIVE. The
+  founding free month is a per-subscription billing-cycle override (a
+  1-month $0 TRIAL cycle, then the regular $20 cycle) — PayPal has no
+  coupon system, and the plan itself stays a plain $20/month plan.
+  The `founding_free_used` flag is burned ONLY on activation (confirm
+  route or webhook), never at subscription creation — same rule as
+  Stripe, so an abandoned approval burns no spot.
+- **Booking payments** — the booking form offers Card (Stripe) or
+  PayPal. PayPal: `POST /api/bookings` with `payment_provider:
+  "paypal"` creates the booking (price re-derived from pricing.ts, as
+  always) and a PayPal order; the PayPal button captures it, and
+  `POST /api/paypal/orders/capture` verifies the order belongs to the
+  booking and the capture completed for exactly the booking amount
+  before marking it paid. A booking paid after cancellation is flagged
+  `needs_refund`, same as Stripe.
+- **Webhook** — `POST /api/webhooks/paypal` handles
+  `BILLING.SUBSCRIPTION.ACTIVATED / CANCELLED / SUSPENDED /
+  PAYMENT.FAILED / EXPIRED` and `PAYMENT.CAPTURE.COMPLETED`,
+  mirroring the Stripe webhook (activation marks the subscription
+  active + burns the founding spot when due; suspension maps to
+  `past_due`; capture marks the booking paid). When
+  `PAYPAL_WEBHOOK_ID` is set the delivery signature is verified;
+  without it every event is verified by fetching the resource from
+  PayPal before acting — an unverified payload can never change
+  anything on its own.
+- **Refunds** — declining a paid booking or cancelling a requested one
+  refunds through PayPal (`refundPayPalCapture`) when the booking was
+  paid with PayPal; a failed refund flags `needs_refund` for a manual
+  refund in the PayPal Dashboard, same as Stripe. The admin refund
+  email names the right provider.
+- **DB (additive only):** `users.payment_provider` + `users.paypal_subscription_id`,
+  `bookings.payment_provider` (default `'stripe'`) +
+  `bookings.paypal_order_id` / `paypal_capture_id` — all via
+  `ADD COLUMN IF NOT EXISTS` in `ensureSchema()`. The dashboard shows
+  PayPal subscribers a "manage or cancel in your PayPal account" note
+  instead of the Stripe Customer Portal button (PayPal has no portal).
+- **Cash App Pay note (Nov 22):** the Stripe Checkout Sessions do NOT
+  set `payment_method_types`, so Checkout uses automatic payment
+  methods — Cash App Pay appears at booking checkout as soon as it is
+  enabled in the Stripe Dashboard (Payments → Payment methods). No
+  code change was needed. Cash App Pay is one-time payments only, so
+  it never appears on the $20/month subscription checkouts. Enabling
+  it is a dashboard toggle, not code — nobody has enabled it yet.
+
+**Steven's setup steps (his step — the PayPal account is his):**
+
+1. PayPal Business account (upgrade the existing PayPal account at
+   paypal.com/business if it isn't Business already — free).
+2. Create two $20/month billing plans in the PayPal Business dashboard
+   (Subscriptions → Create plan): one for homeowners, one for bois.
+   $20 USD, monthly, no trial, no setup fee. Copy the two plan IDs.
+3. developer.paypal.com → My Apps & Credentials → create a REST API
+   app (or use an existing one) → copy the Client ID and Secret.
+   Use the **Live** credentials for real payments (Sandbox first to
+   test, if wanted).
+4. In the same developer dashboard, create a webhook endpoint pointing
+   at `https://az-house-bois.vercel.app/api/webhooks/paypal`,
+   subscribing to `BILLING.SUBSCRIPTION.ACTIVATED`,
+   `BILLING.SUBSCRIPTION.CANCELLED`, `BILLING.SUBSCRIPTION.SUSPENDED`,
+   `BILLING.SUBSCRIPTION.PAYMENT.FAILED`,
+   `BILLING.SUBSCRIPTION.EXPIRED`, `PAYMENT.CAPTURE.COMPLETED`.
+   Copy its Webhook ID (optional but recommended).
+5. In Vercel (project `az-house-bois` → Settings → Environment
+   Variables), Production scope, add:
+   `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MODE=live`,
+   `PAYPAL_PLAN_CLIENT`, `PAYPAL_PLAN_BOI`, `PAYPAL_WEBHOOK_ID`, and
+   `NEXT_PUBLIC_PAYPAL_CLIENT_ID` (same value as `PAYPAL_CLIENT_ID`).
+   Then redeploy.
+6. Test: subscribe with PayPal (a boi founding subscription should
+   show $0 for the first month), book a clean with PayPal, cancel a
+   PayPal subscription from PayPal — the dashboard status should
+   follow each step via the webhook.
+
+Unproven until the credentials and plans are set and a real PayPal
+payment runs: the full subscription approve → confirm → active path,
+the founding trial cycle, the booking capture, the webhook events,
+and the PayPal refund path. The code paths are all fail-soft without
+credentials, so nothing about Stripe changes in the meantime.
+
 ### 3l. Admin delete account + reopen founding spots (added 2026-11-22)
 
 - **Delete account** — every account card on `/admin` (in `AdminUserList.tsx`) now has a Delete button next to Suspend/Unsuspend. Two-click confirm (first click arms it, second click deletes) since deleting is permanent. It calls `POST /api/admin/users/delete` `{ id }` (admin-gated to `isAdminEmail`, same as the suspend route) which refuses the admin account itself with 400. The `deleteUser()` helper in `src/lib/db.ts` deletes dependent rows first — bookings where the user is client or boi, then their application and listing — before deleting the user row, so nothing is orphaned (the tables also carry `ON DELETE CASCADE` as a backstop). Never touches Stripe — a deleted user's Stripe customer/subscription is left alone. On success the card disappears from the list in place.

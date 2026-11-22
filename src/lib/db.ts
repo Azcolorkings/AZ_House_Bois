@@ -18,6 +18,10 @@ export interface UserRow {
   stripe_customer_id: string | null;
   subscription_status: string;
   stripe_subscription_id: string | null;
+  /** "stripe" | "paypal" — which provider the active subscription is paid through. Null for pre-PayPal accounts (treated as Stripe). */
+  payment_provider: string | null;
+  /** PayPal subscription id, when the membership is paid through PayPal. */
+  paypal_subscription_id: string | null;
   current_period_end: string | null;
   /** Snapshot of the homeowner agreement text the homeowner signed, if any. */
   homeowner_agreement_text: string | null;
@@ -129,6 +133,14 @@ export async function ensureSchema() {
   await sql`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended BOOLEAN NOT NULL DEFAULT FALSE
   `;
+  // PayPal columns (added Nov 22, 2026): which provider the membership
+  // is paid through, and the PayPal subscription id. Additive only —
+  // existing Stripe accounts keep working with NULL here.
+  await sql`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS payment_provider TEXT,
+      ADD COLUMN IF NOT EXISTS paypal_subscription_id TEXT
+  `;
   await sql`
     CREATE TABLE IF NOT EXISTS listings (
       id TEXT PRIMARY KEY,
@@ -219,6 +231,15 @@ export async function ensureSchema() {
     ALTER TABLE bookings
       ADD COLUMN IF NOT EXISTS company_amount_cents INTEGER NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS cleaner_amount_cents INTEGER NOT NULL DEFAULT 0
+  `;
+  // PayPal columns (added Nov 22, 2026): which provider the booking was
+  // paid through, and the PayPal order/capture ids. Additive only —
+  // existing Stripe bookings keep working with the defaults.
+  await sql`
+    ALTER TABLE bookings
+      ADD COLUMN IF NOT EXISTS payment_provider TEXT NOT NULL DEFAULT 'stripe',
+      ADD COLUMN IF NOT EXISTS paypal_order_id TEXT,
+      ADD COLUMN IF NOT EXISTS paypal_capture_id TEXT
   `;
   initialized = true;
 }
@@ -620,6 +641,32 @@ export async function updateUserSubscriptionByCustomer(
   `;
 }
 
+/**
+ * PayPal counterpart of updateUserSubscriptionByCustomer: the PayPal
+ * subscription carries the user id in its custom_id, so the lookup is
+ * by user id, not by a customer id. Also records payment_provider so
+ * the dashboard knows to show the PayPal manage note instead of the
+ * Stripe Customer Portal button.
+ */
+export async function updateUserPayPalSubscription(
+  userId: string,
+  patch: {
+    subscription_status: string;
+    paypal_subscription_id?: string | null;
+    current_period_end?: string | null;
+  }
+) {
+  await ensureSchema();
+  await sql`
+    UPDATE users SET
+      subscription_status = ${patch.subscription_status},
+      payment_provider = 'paypal',
+      paypal_subscription_id = ${patch.paypal_subscription_id ?? null},
+      current_period_end = ${patch.current_period_end ?? null}
+    WHERE id = ${userId}
+  `;
+}
+
 export async function getListingByUserId(userId: string): Promise<ListingRow | null> {
   await ensureSchema();
   const { rows } = await sql<ListingRow>`
@@ -854,6 +901,12 @@ export interface BookingRow {
   status: "requested" | "confirmed" | "declined" | "completed" | "cancelled";
   stripe_checkout_session_id: string | null;
   stripe_payment_intent_id: string | null;
+  /** "stripe" | "paypal" — which provider the booking was paid through. */
+  payment_provider: string;
+  /** PayPal order id, when the booking is paid through PayPal. */
+  paypal_order_id: string | null;
+  /** PayPal capture id, set when the PayPal payment completes. */
+  paypal_capture_id: string | null;
   /** Set by the webhook when the one-time payment completes. */
   paid_at: string | null;
   /** none = no refund attempted/needed yet. */
@@ -907,6 +960,8 @@ export async function createBooking(
     supplies_by_homeowner: boolean;
     notes: string;
     stripe_checkout_session_id?: string | null;
+    /** "stripe" (default) or "paypal". */
+    payment_provider?: "stripe" | "paypal";
   }
 ): Promise<BookingRow> {
   await ensureSchema();
@@ -915,7 +970,8 @@ export async function createBooking(
       id, client_user_id, boi_user_id, listing_id, service, amount_cents,
       currency, company_amount_cents, cleaner_amount_cents,
       date, time_slot, frequency, service_address,
-      supplies_by_homeowner, notes, status, stripe_checkout_session_id
+      supplies_by_homeowner, notes, status, stripe_checkout_session_id,
+      payment_provider
     )
     VALUES (
       ${id}, ${data.client_user_id}, ${data.boi_user_id}, ${data.listing_id},
@@ -923,7 +979,8 @@ export async function createBooking(
       ${data.company_amount_cents}, ${data.cleaner_amount_cents}, ${data.date},
       ${data.time_slot}, ${data.frequency}, ${data.service_address},
       ${data.supplies_by_homeowner}, ${data.notes}, 'requested',
-      ${data.stripe_checkout_session_id ?? null}
+      ${data.stripe_checkout_session_id ?? null},
+      ${data.payment_provider ?? "stripe"}
     )
     RETURNING *
   `;
@@ -1010,18 +1067,44 @@ export async function updateBookingStatus(
 /** Called by the Stripe webhook when the one-time payment completes. */
 export async function markBookingPaid(
   id: string,
-  paymentIntentId: string | null
+  paymentIntentId: string | null,
+  /** PayPal capture id, when the booking was paid through PayPal. */
+  paypalCaptureId: string | null = null
 ): Promise<BookingRow | null> {
   await ensureSchema();
   const { rows } = await sql<BookingRow>`
     UPDATE bookings SET
       paid_at = NOW(),
       stripe_payment_intent_id = COALESCE(${paymentIntentId}, stripe_payment_intent_id),
+      paypal_capture_id = COALESCE(${paypalCaptureId}, paypal_capture_id),
       updated_at = NOW()
     WHERE id = ${id}
     RETURNING *
   `;
   return rows[0] ?? null;
+}
+
+/** PayPal webhook lookup: the order id is the booking's reference. */
+export async function getBookingByPayPalOrderId(
+  orderId: string
+): Promise<BookingRow | null> {
+  await ensureSchema();
+  const { rows } = await sql<BookingRow>`
+    SELECT * FROM bookings WHERE paypal_order_id = ${orderId} LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+
+/** Record the PayPal order created for a booking (before approval). */
+export async function setBookingPayPalOrder(
+  id: string,
+  orderId: string
+): Promise<void> {
+  await ensureSchema();
+  await sql`
+    UPDATE bookings SET paypal_order_id = ${orderId}, updated_at = NOW()
+    WHERE id = ${id}
+  `;
 }
 
 /** Record a refund outcome. `needsRefund` true = the admin must refund it by hand in Stripe. */

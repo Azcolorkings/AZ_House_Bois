@@ -64,7 +64,7 @@ export default async function Pricing() {
           </div>
         </div>
         <p className="muted small" style={{ marginTop: 20 }}>
-          Payments are processed securely by Stripe. You&apos;ll create an
+          Payments are processed securely by Stripe or PayPal. You&apos;ll create an
           account first, then check out — your membership starts right away
           once payment goes through.
         </p>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import PayPalSubscribeButton from "@/components/PayPalSubscribeButton";
 
 export default function SubscribeButton({
   role,
@@ -46,6 +47,12 @@ export default function SubscribeButton({
         {busy ? "Starting checkout…" : label}
       </button>
       {error && <div className="error" role="alert">{error}</div>}
+      <div style={{ marginTop: 12 }}>
+        <p className="small muted" style={{ margin: "0 0 8px" }}>
+          Or pay with PayPal — same $20/month:
+        </p>
+        <PayPalSubscribeButton role={role} />
+      </div>
     </span>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import PayPalButton from "@/components/PayPalButton";
 import {
   CLEANING_PRICES,
   SERVICE_LABELS,
@@ -31,6 +32,42 @@ export default function BookingForm({ listingId }: { listingId: string }) {
   const [supplies, setSupplies] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [method, setMethod] = useState<"stripe" | "paypal">("stripe");
+  const [paypalReady, setPaypalReady] = useState(false);
+  // Set once the booking is created with PayPal — the PayPal button
+  // below then captures this order. Until then the form is the step.
+  const [paypalOrder, setPaypalOrder] = useState<{
+    orderId: string;
+    bookingId: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/paypal/config")
+      .then((r) => r.json())
+      .then((cfg: { configured?: boolean }) => {
+        if (!cancelled) setPaypalReady(Boolean(cfg?.configured));
+      })
+      .catch(() => {
+        if (!cancelled) setPaypalReady(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function capturePayPalOrder(orderId: string, bookingId: string) {
+    const res = await fetch("/api/paypal/orders/capture", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, bookingId }),
+    });
+    const data = (await res.json()) as { error?: string };
+    if (!res.ok) {
+      throw new Error(data?.error || "Could not capture the PayPal payment.");
+    }
+    window.location.href = "/dashboard?booked=1";
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,6 +86,7 @@ export default function BookingForm({ listingId }: { listingId: string }) {
           service_address: address,
           supplies_by_homeowner: supplies,
           notes,
+          payment_provider: method,
         }),
       });
       const data = await res.json();
@@ -58,6 +96,17 @@ export default function BookingForm({ listingId }: { listingId: string }) {
       }
       if (!res.ok) {
         setError(data?.error || "Could not start the booking.");
+        setBusy(false);
+        return;
+      }
+      if (data?.paypal_order_id && data?.booking_id) {
+        // PayPal: the booking is saved (unpaid). The PayPal button
+        // below approves and captures this order — same amount, same
+        // booking. Nothing is charged until the capture completes.
+        setPaypalOrder({
+          orderId: data.paypal_order_id,
+          bookingId: data.booking_id,
+        });
         setBusy(false);
         return;
       }
@@ -218,21 +267,106 @@ export default function BookingForm({ listingId }: { listingId: string }) {
         declines, or you cancel before he confirms, you get refunded.
       </p>
 
+      <label>How do you want to pay?</label>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 8 }}>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            fontWeight: 400,
+            border: "1px solid var(--border, #ddd)",
+            borderRadius: 12,
+            padding: "12px 14px",
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="radio"
+            name="payment_method"
+            value="stripe"
+            checked={method === "stripe"}
+            onChange={() => setMethod("stripe")}
+            disabled={Boolean(paypalOrder)}
+            style={{ width: "auto" }}
+          />
+          <span>
+            <strong>Card</strong>
+            <br />
+            <span className="small muted">Pay by card at checkout (Stripe).</span>
+          </span>
+        </label>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            fontWeight: 400,
+            border: "1px solid var(--border, #ddd)",
+            borderRadius: 12,
+            padding: "12px 14px",
+            cursor: paypalReady ? "pointer" : "not-allowed",
+            opacity: paypalReady ? 1 : 0.6,
+          }}
+        >
+          <input
+            type="radio"
+            name="payment_method"
+            value="paypal"
+            checked={method === "paypal"}
+            onChange={() => setMethod("paypal")}
+            disabled={!paypalReady || Boolean(paypalOrder)}
+            style={{ width: "auto" }}
+          />
+          <span>
+            <strong>PayPal</strong>
+            <br />
+            <span className="small muted">
+              {paypalReady
+                ? "Pay with your PayPal account."
+                : "PayPal checkout isn't set up yet."}
+            </span>
+          </span>
+        </label>
+      </div>
+
       {error && (
         <div className="error" role="alert">
           {error}
         </div>
       )}
-      <button
-        type="submit"
-        className="btn btn-brand"
-        disabled={busy}
-        style={{ marginTop: 12 }}
-      >
-        {busy
-          ? "Starting checkout…"
-          : `Pay ${formatCents(CLEANING_PRICES[service])} and book →`}
-      </button>
+
+      {paypalOrder ? (
+        <div style={{ marginTop: 12 }}>
+          <p className="small muted">
+            Your booking is saved. Complete the payment with PayPal below —
+            nothing is charged until you approve it there.
+          </p>
+          <PayPalButton
+            intent="capture"
+            create={async () => paypalOrder.orderId}
+            onApprove={async (data) => {
+              if (!data.orderID) {
+                throw new Error("PayPal didn't return an order.");
+              }
+              await capturePayPalOrder(data.orderID, paypalOrder.bookingId);
+            }}
+          />
+        </div>
+      ) : (
+        <button
+          type="submit"
+          className="btn btn-brand"
+          disabled={busy}
+          style={{ marginTop: 12 }}
+        >
+          {busy
+            ? "Starting checkout…"
+            : method === "paypal"
+              ? `Continue with PayPal — ${formatCents(CLEANING_PRICES[service])}`
+              : `Pay ${formatCents(CLEANING_PRICES[service])} and book →`}
+        </button>
+      )}
     </form>
   );
 }
