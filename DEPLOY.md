@@ -257,15 +257,31 @@ The first 5 approved bois get their first month free, then $20/month
 - **Usage tracking:** `users.founding_free_used` (added with
   `ADD COLUMN IF NOT EXISTS` in `ensureSchema()`, same pattern as the
   `dob` column) means "this boi used one of the 5 free months".
-  `countFoundingFreeUsed()` counts boi users with the flag set;
-  `markFoundingFreeUsed(userId)` sets it — called ONLY after the
-  coupon session is created successfully, so a failed session
-  creation does not burn a spot. A boi who already used one does not
-  get another.
+  `countFoundingFreeUsed()` counts boi users with the flag set.
+  **Fixed Nov 22, 2026 — the flag used to be set the moment the
+  Checkout Session was created, so an abandoned checkout burned a
+  spot (the live test proved it: a test boi abandoned checkout and
+  the count dropped to 4 of 5 with no subscription). Now the coupon
+  session carries `founding_free=1` in its metadata (and in
+  `subscription_data.metadata`, so the subscription carries it too),
+  and `markFoundingFreeUsed(userId)` is called ONLY from the webhook
+  on `checkout.session.completed` or `customer.subscription.created`
+  with that metadata — i.e. only once the subscription actually
+  exists. The UPDATE is idempotent, so both events firing or a
+  duplicate delivery can never burn two spots. A boi who already
+  used one does not get another. LIVE-DATA NOTE: the test boi's flag
+  was already burned by the old code before this fix, so the count
+  still shows 4 of 5 until that flag is reset (one-off SQL on Neon).
+  Steven chose Nov 22 to leave the subscription test for a real boi
+  to prove, so the reset is the only way back to 5 of 5 — and with
+  the flag set, the checkout route will NOT offer the test boi the
+  coupon again on retry.**
 - **Fallback:** if Stripe rejects the coupon (e.g. max redemptions
   already hit), the route logs the error and falls back to a plain
   checkout with no coupon — the boi can still subscribe; the free
-  month is a bonus, never a blocker. The webhook needs no change: a
+  month is a bonus, never a blocker. The plain fallback session
+  carries NO `founding_free` metadata, so completing it never burns
+  a spot. The webhook needs no change: a
   100%-off first invoice still fires `checkout.session.completed` and
   the subscription is marked active as usual.
 - **Site copy:** a shared server component
@@ -399,3 +415,20 @@ Homeowners sign before they can see the roster or subscribe:
 - **Suspend / unsuspend** — `users.suspended` (BOOLEAN NOT NULL DEFAULT FALSE, via `ADD COLUMN IF NOT EXISTS` in `ensureSchema()`). Admin-only `POST /api/admin/users` `{ id, suspended }` toggles it; the admin account itself can never be suspended. Suspended users cannot sign in (`authorize` returns null) and their live sessions are killed by the session callback in `src/lib/auth.ts`, which re-checks the DB on every `auth()` call and strips the session user when suspended (fails open if the DB check errors, so a DB outage never locks everyone out). Middleware also bounces sessions with no user to `/login`. Suspending never deletes anything and never touches Stripe.
 - Privacy: the dashboard shows email + status fields only. SSN, ID uploads, addresses, emergency contacts, DOBs, and passwords never appear on it.
 - Unproven until the next deploy serves a request: the first-run `suspended` migration on live Neon, and the full suspend → locked-out → unsuspend path with a real account.
+
+### 3j. Admin login page + admin navigation
+
+- **`/admin/login`** — a separate admin sign-in page, deliberately distinct from the regular `/login` (dark header, "AZ House Bois — Admin" heading). Email + password only; no sign-up link, no role picker, no boi registration anywhere on it. Signs in through the same credentials auth. After sign-in the form checks `GET /api/admin/me` (server-side `isAdminEmail` check, so the admin email never leaks to the client): admins go to `/admin`, anyone else is signed straight back out with "This login is for the site admin only." Already-signed-in admins visiting `/admin/login` redirect to `/admin`.
+- **Middleware fix** — `/admin` and its subpaths are protected, which would have made `/admin/login` unreachable. `src/middleware.ts` now exempts exactly `/admin/login` (public); every other `/admin/*` route stays protected and still redirects unauthenticated users to `/login`.
+- **`/admin` nav cards** — four prominent cards at the top: Roster (`/roster`), Applications (`/admin/applications`), Homeowners (`/admin#clients`), Bookings (`/admin/bookings`). The clients and bois sections in `AdminUserList.tsx` now carry `id="clients"` / `id="bois"` anchors. Nothing was removed from the dashboard.
+- **`/dashboard` admin section** — when the signed-in user is the admin, a card appears at the top with links to Admin dashboard, Roster, Cleaner applications, Homeowners (`/admin#clients`), and All bookings. Non-admin users see no admin section at all.
+- Regular `/login` and `/signup` are untouched. Stripe, checkout, webhook, pricing, booking, agreements, and the $20/mo flows are untouched.
+- Unproven until the next deploy serves a request: the new `/admin/login` route live, the non-admin rejection path, and the middleware exemption.
+
+### 3k. Admin Analytics section on /admin
+
+- **Analytics cards at the top of `/admin`** (admin-gated like the rest of the dashboard — `isAdminEmail` only, same server-component gate). All counts come from the existing Postgres tables via a new `getAdminAnalytics()` helper in `src/lib/db.ts`; no new external service, no Stripe API calls, no new dependencies.
+- **Accounts:** total, clients vs bois, new signups in the last 7 and 30 days, suspended count. **Applications:** pending / approved / denied. **Subscriptions:** paying (active) vs not subscribed yet (`subscription_status = 'none'`). **Listings:** published vs unpublished drafts. **Bookings:** counts by status (requested / confirmed / declined / cancelled / completed) plus money — total of paid bookings (`paid_at IS NOT NULL`), company 20% cut earned on paid bookings, cleaner 80% pay owed on confirmed/completed cleans (same definition as the `/admin/bookings` total). **Founding offer:** spots left = 5 − `countFoundingFreeUsed()`, the same counter the site copy uses.
+- **Signups — last 14 days:** per-day counts grouped from `users.created_at` in the America/Phoenix timezone, with zero-signup days filled in; oldest day first.
+- Money is formatted with the existing `formatCents()` from `src/lib/pricing.ts`. Existing dashboard content (account lists, suspend switches, nav cards) is unchanged below the Analytics section.
+- Unproven until the next deploy serves a request: the section rendering live with real data.

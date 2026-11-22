@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
+import { isAdminEmail } from "@/lib/admin";
 import {
   getApplicationByUserId,
   getBookingsForBoi,
@@ -92,6 +93,34 @@ export default async function Dashboard({
           Signed in as <strong>{user.email}</strong> ·{" "}
           {user.role === "client" ? "🏠 Homeowner" : "🔥 Boi"}
         </p>
+
+        {isAdminEmail(user.email) && (
+          <div className="card" style={{ marginTop: 20 }}>
+            <h3>Admin</h3>
+            <p className="muted">
+              Site admin — jump straight to the important stuff.
+            </p>
+            <div
+              style={{ display: "flex", gap: 12, flexWrap: "wrap" }}
+            >
+              <Link href="/admin" className="btn btn-brand">
+                Admin dashboard →
+              </Link>
+              <Link href="/roster" className="btn btn-ghost">
+                Roster →
+              </Link>
+              <Link href="/admin/applications" className="btn btn-ghost">
+                Cleaner applications →
+              </Link>
+              <Link href="/admin#clients" className="btn btn-ghost">
+                Homeowners →
+              </Link>
+              <Link href="/admin/bookings" className="btn btn-ghost">
+                All bookings →
+              </Link>
+            </div>
+          </div>
+        )}
 
         {subscribed === "1" && (
           <div className="success" role="status">

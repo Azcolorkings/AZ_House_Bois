@@ -5,6 +5,9 @@ const PROTECTED = ["/roster", "/dashboard", "/apply", "/admin"];
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
+  // The admin login page itself must stay public — otherwise nobody
+  // could ever reach it to sign in as admin in the first place.
+  if (pathname === "/admin/login") return NextResponse.next();
   const needsAuth = PROTECTED.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
   );

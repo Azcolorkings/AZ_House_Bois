@@ -3,6 +3,7 @@ import { getStripe } from "@/lib/stripe";
 import {
   getBookingByCheckoutSessionId,
   markBookingPaid,
+  markFoundingFreeUsed,
   setBookingRefund,
   updateUserSubscriptionByCustomer,
 } from "@/lib/db";
@@ -114,6 +115,22 @@ export async function POST(req: Request) {
             ? new Date(obj.current_period_end * 1000).toISOString()
             : undefined,
         });
+      }
+      // Founding offer: burn one of the 5 free months ONLY now that
+      // the subscription actually completed. The checkout session and
+      // the subscription both carry metadata founding_free=1 when the
+      // coupon was applied (set in POST /api/checkout), so either
+      // event marks it — the UPDATE is idempotent, so a duplicate
+      // delivery or both events firing can never burn two spots.
+      // An abandoned checkout never reaches here, so it never burns one.
+      const meta = obj.metadata ?? {};
+      if (
+        (event.type === "checkout.session.completed" ||
+          event.type === "customer.subscription.created") &&
+        meta.founding_free === "1" &&
+        meta.user_id
+      ) {
+        await markFoundingFreeUsed(meta.user_id);
       }
     }
   } catch (err) {

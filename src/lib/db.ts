@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { sql } from "@vercel/postgres";
+import { FOUNDING_FREE_SPOTS } from "@/lib/pricing";
 
 // Vercel's Neon Postgres integration exposes DATABASE_URL; @vercel/postgres
 // reads POSTGRES_URL, so mirror it when only the former is set.
@@ -115,8 +116,9 @@ export async function ensureSchema() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS dob TEXT
   `;
   // Founding free month flag (added Nov 21, 2026): one of the 5 free
-  // first months for approved bois. Set only after a coupon checkout
-  // session is created successfully — never on a failed attempt.
+  // first months for approved bois. Set ONLY by the Stripe webhook,
+  // after the subscription actually completes — never at Checkout
+  // Session creation, so an abandoned checkout burns no spot.
   await sql`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS founding_free_used BOOLEAN NOT NULL DEFAULT FALSE
   `;
@@ -326,14 +328,185 @@ export async function countFoundingFreeUsed(): Promise<number> {
 
 /**
  * Mark that this boi used one of the founding free months. Call ONLY
- * after a coupon checkout session was created successfully — a failed
- * session creation must not burn a spot.
+ * from the Stripe webhook, after the subscription actually completed
+ * (checkout.session.completed or customer.subscription.created with
+ * metadata founding_free=1). NEVER at Checkout Session creation — an
+ * abandoned checkout must not burn a spot. Idempotent: setting TRUE
+ * twice is harmless, so duplicate webhook deliveries are safe.
  */
 export async function markFoundingFreeUsed(userId: string): Promise<void> {
   await ensureSchema();
   await sql`
     UPDATE users SET founding_free_used = TRUE WHERE id = ${userId}
   `;
+}
+
+/**
+ * Admin analytics — server-side counts from the existing tables only.
+ * No external service, no Stripe API calls. Used by the Analytics
+ * section at the top of /admin. All money is in cents.
+ */
+export interface AdminAnalytics {
+  accounts: {
+    total: number;
+    clients: number;
+    bois: number;
+    newLast7Days: number;
+    newLast30Days: number;
+    suspended: number;
+  };
+  applications: { pending: number; approved: number; denied: number };
+  subscriptions: { paying: number; notSubscribed: number };
+  listings: { published: number; drafts: number };
+  bookings: {
+    requested: number;
+    confirmed: number;
+    declined: number;
+    cancelled: number;
+    completed: number;
+    paidTotalCents: number;
+    companyEarnedCents: number;
+    cleanerOwedCents: number;
+  };
+  foundingSpotsLeft: number;
+  signupsByDay: { date: string; count: number }[];
+}
+
+export async function getAdminAnalytics(): Promise<AdminAnalytics> {
+  await ensureSchema();
+
+  const { rows: accountRows } = await sql<{
+    total: string;
+    clients: string;
+    bois: string;
+    new_7: string;
+    new_30: string;
+    suspended: string;
+  }>`
+    SELECT
+      COUNT(*)::text AS total,
+      COUNT(*) FILTER (WHERE role = 'client')::text AS clients,
+      COUNT(*) FILTER (WHERE role = 'boi')::text AS bois,
+      COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::text AS new_7,
+      COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days')::text AS new_30,
+      COUNT(*) FILTER (WHERE suspended)::text AS suspended
+    FROM users
+  `;
+  const a = accountRows[0];
+
+  const { rows: appRows } = await sql<{ status: string; count: string }>`
+    SELECT status, COUNT(*)::text AS count FROM applications GROUP BY status
+  `;
+  const appCount = (s: string) =>
+    Number(appRows.find((r) => r.status === s)?.count ?? 0);
+
+  const { rows: subRows } = await sql<{
+    paying: string;
+    not_subscribed: string;
+  }>`
+    SELECT
+      COUNT(*) FILTER (WHERE subscription_status = 'active')::text AS paying,
+      COUNT(*) FILTER (WHERE subscription_status = 'none')::text AS not_subscribed
+    FROM users
+  `;
+  const s = subRows[0];
+
+  const { rows: listingRows } = await sql<{
+    published: string;
+    drafts: string;
+  }>`
+    SELECT
+      COUNT(*) FILTER (WHERE published)::text AS published,
+      COUNT(*) FILTER (WHERE NOT published)::text AS drafts
+    FROM listings
+  `;
+  const l = listingRows[0];
+
+  const { rows: bookingRows } = await sql<{
+    status: string;
+    count: string;
+  }>`
+    SELECT status, COUNT(*)::text AS count FROM bookings GROUP BY status
+  `;
+  const bookCount = (st: string) =>
+    Number(bookingRows.find((r) => r.status === st)?.count ?? 0);
+  const { rows: moneyRows } = await sql<{
+    paid_total: string;
+    company_earned: string;
+    cleaner_owed: string;
+  }>`
+    SELECT
+      COALESCE(SUM(amount_cents) FILTER (WHERE paid_at IS NOT NULL), 0)::text AS paid_total,
+      COALESCE(SUM(company_amount_cents) FILTER (WHERE paid_at IS NOT NULL), 0)::text AS company_earned,
+      COALESCE(SUM(cleaner_amount_cents) FILTER (WHERE status IN ('confirmed', 'completed')), 0)::text AS cleaner_owed
+    FROM bookings
+  `;
+  const m = moneyRows[0];
+
+  // Founding spots left: 5 minus bois who used a free month. Same
+  // counter the site copy uses, so the numbers always agree.
+  const foundingUsed = await countFoundingFreeUsed();
+
+  // Signups per day, last 14 days, Phoenix dates. Days with no
+  // signups return no row, so fill the gaps with zeros here.
+  const { rows: dayRows } = await sql<{ day: string; count: string }>`
+    SELECT TO_CHAR(created_at AT TIME ZONE 'America/Phoenix', 'YYYY-MM-DD') AS day,
+      COUNT(*)::text AS count
+    FROM users
+    WHERE created_at >= NOW() - INTERVAL '14 days'
+    GROUP BY day
+    ORDER BY day
+  `;
+  const byDay = new Map(dayRows.map((r) => [r.day, Number(r.count)]));
+  const dayFmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Phoenix",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const signupsByDay = Array.from({ length: 14 }, (_, i) => {
+    const date = dayFmt.format(Date.now() - (13 - i) * 86400000);
+    return { date, count: byDay.get(date) ?? 0 };
+  });
+
+  return {
+    accounts: {
+      total: Number(a?.total ?? 0),
+      clients: Number(a?.clients ?? 0),
+      bois: Number(a?.bois ?? 0),
+      newLast7Days: Number(a?.new_7 ?? 0),
+      newLast30Days: Number(a?.new_30 ?? 0),
+      suspended: Number(a?.suspended ?? 0),
+    },
+    applications: {
+      pending: appCount("pending"),
+      approved: appCount("approved"),
+      denied: appCount("denied"),
+    },
+    subscriptions: {
+      paying: Number(s?.paying ?? 0),
+      notSubscribed: Number(s?.not_subscribed ?? 0),
+    },
+    listings: {
+      published: Number(l?.published ?? 0),
+      drafts: Number(l?.drafts ?? 0),
+    },
+    bookings: {
+      requested: bookCount("requested"),
+      confirmed: bookCount("confirmed"),
+      declined: bookCount("declined"),
+      cancelled: bookCount("cancelled"),
+      completed: bookCount("completed"),
+      paidTotalCents: Number(m?.paid_total ?? 0),
+      companyEarnedCents: Number(m?.company_earned ?? 0),
+      cleanerOwedCents: Number(m?.cleaner_owed ?? 0),
+    },
+    foundingSpotsLeft: Math.max(
+      0,
+      FOUNDING_FREE_SPOTS - foundingUsed
+    ),
+    signupsByDay,
+  };
 }
 
 /**

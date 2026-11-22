@@ -128,7 +128,7 @@ export default function AdminUserList({
         </div>
       )}
 
-      <h3 style={{ marginTop: 28 }}>
+      <h3 id="clients" style={{ marginTop: 28 }}>
         Clients (homeowners) — {clients.length}
       </h3>
       {clients.length === 0 ? (
@@ -148,7 +148,7 @@ export default function AdminUserList({
         </div>
       )}
 
-      <h3 style={{ marginTop: 28 }}>Bois — {bois.length}</h3>
+      <h3 id="bois" style={{ marginTop: 28 }}>Bois — {bois.length}</h3>
       {bois.length === 0 ? (
         <div className="card">
           <p className="muted">No boi accounts yet.</p>

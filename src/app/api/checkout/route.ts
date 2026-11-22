@@ -6,7 +6,6 @@ import { FOUNDING_COUPON_ID, FOUNDING_FREE_SPOTS } from "@/lib/pricing";
 import {
   countFoundingFreeUsed,
   getUserById,
-  markFoundingFreeUsed,
   updateUserStripe,
   getApplicationByUserId,
   hasSignedHomeownerAgreement,
@@ -117,10 +116,15 @@ export async function POST(req: Request) {
         checkout = await stripe.checkout.sessions.create({
           ...sessionParams,
           discounts: [{ coupon: FOUNDING_COUPON_ID }],
+          // Tag the coupon session so the webhook can burn the founding
+          // spot ONLY when the subscription actually completes. The flag
+          // is deliberately NOT on the plain fallback session below — a
+          // boi who pays full price did not use a free month.
+          metadata: { ...sessionParams.metadata, founding_free: "1" },
+          subscription_data: {
+            metadata: { user_id: user.id, role, founding_free: "1" },
+          },
         });
-        // Only burn a founding spot once the coupon session exists — a
-        // failed creation must not consume one of the 5.
-        await markFoundingFreeUsed(user.id);
       } catch (couponErr) {
         // The free month is a bonus, never a blocker: if Stripe rejects
         // the coupon (e.g. max redemptions reached), fall back to a plain
