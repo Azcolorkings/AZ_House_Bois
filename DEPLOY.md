@@ -538,6 +538,14 @@ the founding trial cycle, the booking capture, the webhook events,
 and the PayPal refund path. The code paths are all fail-soft without
 credentials, so nothing about Stripe changes in the meantime.
 
+### 3n. Trash-cleanup parallax on the homepage (added 2026-11-22)
+
+- **What it is:** a client component (`src/components/TrashCleanupParallax.tsx`) rendered on the homepage only, behind the sticky header. ~32 small trash pieces (inline SVG: crumpled paper ball, bottle, candy wrapper, can, dust specks, lint) are scattered over the page at the top. As the visitor scrolls, each piece drifts at its own parallax rate and fades out SLOWLY — each fade takes 10–15% of the page's scroll range — so the cleanup feels gradual all the way down. By the bottom of the page every piece is gone: messy at the top, spotless at the bottom.
+- **Deterministic placement:** pieces are placed by a seeded PRNG (mulberry32, fixed seed), never `Math.random` at render, so server and client render match with no hydration flicker. Fade starts are spread 0.02–0.84 of scroll progress with 0.10–0.15 fade lengths, so the last piece finishes just before the very bottom.
+- **Reduced motion:** `prefers-reduced-motion: reduce` hides the layer entirely — the page is just clean. Layer is `pointer-events: none`, fixed, z-index 40 (below the sticky header), small low-opacity pieces so text stays readable. No new dependencies; scroll updates run through a rAF loop mutating node styles directly (no React state churn).
+- **Tweaking later:** `PIECE_COUNT` (32) and the seed in `mulberry32(20261122)` control how many pieces and where they land; `fadeLen: 0.1 + rand() * 0.05` in `buildPieces()` sets how long each fade takes; `baseOpacity: 0.35 + rand() * 0.25` sets how visible they are. The homepage is long enough to scroll meaningfully, so the effect is tied to the real page scroll — no filler was added.
+- No content, copy, layout, auth, payment, or Stripe/PayPal code was touched.
+
 ### 3l. Admin delete account + reopen founding spots (added 2026-11-22)
 
 - **Delete account** — every account card on `/admin` (in `AdminUserList.tsx`) now has a Delete button next to Suspend/Unsuspend. Two-click confirm (first click arms it, second click deletes) since deleting is permanent. It calls `POST /api/admin/users/delete` `{ id }` (admin-gated to `isAdminEmail`, same as the suspend route) which refuses the admin account itself with 400. The `deleteUser()` helper in `src/lib/db.ts` deletes dependent rows first — bookings where the user is client or boi, then their application and listing — before deleting the user row, so nothing is orphaned (the tables also carry `ON DELETE CASCADE` as a backstop). Never touches Stripe — a deleted user's Stripe customer/subscription is left alone. On success the card disappears from the list in place.

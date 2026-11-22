@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import LookPicker from "@/components/LookPicker";
 import SubscribeButton from "@/components/SubscribeButton";
+import TrashCleanupParallax from "@/components/TrashCleanupParallax";
 
 const AREAS = [
   "Phoenix", "Scottsdale", "Paradise Valley", "Tempe", "Mesa", "Chandler",
@@ -39,6 +40,7 @@ const FAQS = [
 export default function Home() {
   return (
     <>
+      <TrashCleanupParallax />
       <section className="hero">
         <div className="container">
           <p className="pill" style={{ background: "rgba(255,255,255,0.12)", color: "#fff6e9", border: "none" }}>
