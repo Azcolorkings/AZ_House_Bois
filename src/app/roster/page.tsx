@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
+import { isAdminEmail } from "@/lib/admin";
 import { getPublishedListings, getUserById, hasSignedHomeownerAgreement } from "@/lib/db";
 import SubscribeButton from "@/components/SubscribeButton";
 
@@ -17,8 +18,11 @@ export default async function Roster({
   const session = await auth();
   const user = session?.user?.id ? await getUserById(session.user.id) : null;
   const { city } = await searchParams;
+  // The admin browses the roster free — no membership needed to see his
+  // own site. Booking still requires a paid subscription, admin included.
+  const isAdmin = user ? isAdminEmail(user.email) : false;
 
-  if (!user || user.role !== "client" || user.subscription_status !== "active") {
+  if (!user || (!isAdmin && (user.role !== "client" || user.subscription_status !== "active"))) {
     return (
       <section className="section">
         <div className="container" style={{ maxWidth: 680 }}>
@@ -46,7 +50,8 @@ export default async function Roster({
 
   // Homeowners who subscribed before the agreement existed still have to
   // sign it before they can browse — the roster API enforces this too.
-  if (!hasSignedHomeownerAgreement(user)) {
+  // The admin is exempt: he browses free.
+  if (!isAdmin && !hasSignedHomeownerAgreement(user)) {
     return (
       <section className="section">
         <div className="container" style={{ maxWidth: 680 }}>
@@ -73,6 +78,9 @@ export default async function Roster({
       <div className="container">
         <h2>The roster</h2>
         <p className="muted">Members-only browsing. Pick your boi, pick the look, set your regular schedule.</p>
+        {isAdmin && (
+          <p className="small muted">Admin view — no membership needed to browse.</p>
+        )}
 
         <form method="get" style={{ margin: "20px 0", display: "flex", gap: 10, flexWrap: "wrap" }}>
           <select name="city" defaultValue={city ?? ""} style={{ maxWidth: 260 }}>

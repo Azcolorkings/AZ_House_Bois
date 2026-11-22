@@ -8,7 +8,7 @@ export default auth((req) => {
   const needsAuth = PROTECTED.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
   );
-  if (needsAuth && !req.auth) {
+  if (needsAuth && !req.auth?.user) {
     const url = new URL("/login", req.url);
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);

@@ -26,6 +26,8 @@ export interface UserRow {
   dob: string | null;
   /** True when this boi used one of the 5 founding free months. */
   founding_free_used: boolean;
+  /** True when the admin suspended the account — suspended users cannot sign in or use the site. */
+  suspended: boolean;
   created_at: string;
 }
 
@@ -117,6 +119,13 @@ export async function ensureSchema() {
   // session is created successfully — never on a failed attempt.
   await sql`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS founding_free_used BOOLEAN NOT NULL DEFAULT FALSE
+  `;
+  // Suspended flag (added Nov 22, 2026): the admin can suspend an
+  // account from the admin dashboard. Suspended users cannot sign in,
+  // and the auth layer blocks their existing sessions too. Suspending
+  // never deletes anything and never touches Stripe.
+  await sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended BOOLEAN NOT NULL DEFAULT FALSE
   `;
   await sql`
     CREATE TABLE IF NOT EXISTS listings (
@@ -325,6 +334,61 @@ export async function markFoundingFreeUsed(userId: string): Promise<void> {
   await sql`
     UPDATE users SET founding_free_used = TRUE WHERE id = ${userId}
   `;
+}
+
+/**
+ * Suspend or unsuspend an account. Admin-only — callers must gate to
+ * isAdminEmail. Never deletes anything and never touches Stripe; the
+ * auth layer enforces the flag at sign-in and on every session check.
+ */
+export async function setUserSuspended(
+  id: string,
+  suspended: boolean
+): Promise<UserRow | null> {
+  await ensureSchema();
+  const { rows } = await sql<UserRow>`
+    UPDATE users SET suspended = ${suspended}
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return rows[0] ?? null;
+}
+
+/** One row per account for the admin dashboard — status fields only, never sensitive application details. */
+export interface AdminUserRow {
+  id: string;
+  email: string;
+  role: Role;
+  subscription_status: string;
+  suspended: boolean;
+  created_at: string;
+  /** True when the homeowner signed the homeowner agreement & waiver. */
+  homeowner_agreement_signed: boolean;
+  /** Boi application status, or null when the boi never applied. */
+  application_status: "pending" | "approved" | "denied" | null;
+  /** True when the boi has a published roster listing. */
+  listing_published: boolean;
+  /** Display name from the boi's listing, if they have one. */
+  display_name: string | null;
+}
+
+/** Admin: every account, newest first, with application + listing status joined in. */
+export async function listAllUsersForAdmin(): Promise<AdminUserRow[]> {
+  await ensureSchema();
+  const { rows } = await sql<AdminUserRow>`
+    SELECT
+      u.id, u.email, u.role, u.subscription_status, u.suspended, u.created_at,
+      (u.homeowner_agreement_text IS NOT NULL
+        AND u.homeowner_agreement_signature IS NOT NULL) AS homeowner_agreement_signed,
+      a.status AS application_status,
+      COALESCE(l.published, FALSE) AS listing_published,
+      l.display_name AS display_name
+    FROM users u
+    LEFT JOIN applications a ON a.user_id = u.id
+    LEFT JOIN listings l ON l.user_id = u.id
+    ORDER BY u.created_at DESC
+  `;
+  return rows;
 }
 
 export async function updateUserSubscriptionByCustomer(

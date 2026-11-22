@@ -64,7 +64,8 @@ export default async function AdminBookingsPage() {
           )}
         </p>
         <p className="small muted">
-          <Link href="/admin/applications">Cleaner applications →</Link>
+          <Link href="/admin">Admin dashboard →</Link>{" "}
+          · <Link href="/admin/applications">Cleaner applications →</Link>
         </p>
 
         {bookings.length === 0 ? (
