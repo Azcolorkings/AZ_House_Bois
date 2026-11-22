@@ -4,6 +4,7 @@ import { isAdminEmail } from "@/lib/admin";
 import { getAdminAnalytics, listAllUsersForAdmin } from "@/lib/db";
 import { formatCents } from "@/lib/pricing";
 import AdminUserList from "@/components/AdminUserList";
+import FoundingResetButton from "@/components/FoundingResetButton";
 
 function fmtDay(isoDate: string): string {
   return new Date(`${isoDate}T12:00:00`).toLocaleDateString("en-US", {
@@ -44,9 +45,10 @@ export default async function AdminDashboardPage() {
         <h2>Admin dashboard</h2>
         <p className="muted">
           Every account on the site. You browse the roster free — no
-          membership needed — and you can suspend any account here. Suspending
-          blocks sign-in and kills their live session; nothing is deleted
-          and Stripe is never touched.
+          membership needed — and you can suspend or delete any account
+          here. Suspending blocks sign-in and kills their live session;
+          deleting removes the account and its applications, listings,
+          and bookings for good. Neither ever touches Stripe.
         </p>
 
         <h3 style={{ marginTop: 28 }}>Analytics</h3>
@@ -112,9 +114,7 @@ export default async function AdminDashboardPage() {
           </div>
           <div className="card" style={{ margin: 0 }}>
             <strong>Founding offer</strong>
-            <p className="small muted" style={{ margin: "8px 0 0", lineHeight: 1.8 }}>
-              {stats.foundingSpotsLeft} of 5 founding spots left
-            </p>
+            <FoundingResetButton spotsLeft={stats.foundingSpotsLeft} />
           </div>
         </div>
 

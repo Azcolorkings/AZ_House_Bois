@@ -14,12 +14,17 @@ function fmtDate(iso: string): string {
 function AccountCard({
   account,
   onToggle,
+  onDelete,
   busy,
+  deleting,
 }: {
   account: AdminUserRow;
   onToggle: (id: string, suspended: boolean) => void;
+  onDelete: (id: string) => void;
   busy: boolean;
+  deleting: boolean;
 }) {
+  const [confirming, setConfirming] = useState(false);
   return (
     <article className="card" style={{ margin: 0 }}>
       <div
@@ -70,14 +75,38 @@ function AccountCard({
           </>
         )}
       </p>
-      <button
-        type="button"
-        className="btn btn-ghost"
-        disabled={busy}
-        onClick={() => onToggle(account.id, !account.suspended)}
-      >
-        {busy ? "Saving…" : account.suspended ? "Unsuspend" : "Suspend"}
-      </button>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          disabled={busy || deleting}
+          onClick={() => onToggle(account.id, !account.suspended)}
+        >
+          {busy ? "Saving…" : account.suspended ? "Unsuspend" : "Suspend"}
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          disabled={busy || deleting}
+          style={
+            confirming ? { background: "#fdeceb", color: "#8f1d1d" } : undefined
+          }
+          onClick={() => {
+            if (confirming) {
+              onDelete(account.id);
+              setConfirming(false);
+            } else {
+              setConfirming(true);
+            }
+          }}
+        >
+          {deleting
+            ? "Deleting…"
+            : confirming
+              ? "Click again to delete — this is permanent"
+              : "Delete"}
+        </button>
+      </div>
       {account.suspended && (
         <p className="small muted" style={{ marginTop: 8 }}>
           Suspended — this account cannot sign in or use the site until you
@@ -95,6 +124,7 @@ export default function AdminUserList({
 }) {
   const [items, setItems] = useState(users);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   async function toggle(id: string, suspended: boolean) {
@@ -115,6 +145,24 @@ export default function AdminUserList({
       prev.map((u) => (u.id === id ? { ...u, suspended } : u))
     );
     setBusyId(null);
+  }
+
+  async function remove(id: string) {
+    setDeletingId(id);
+    setError("");
+    const res = await fetch("/api/admin/users/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data?.error || "Could not delete the account.");
+      setDeletingId(null);
+      return;
+    }
+    setItems((prev) => prev.filter((u) => u.id !== id));
+    setDeletingId(null);
   }
 
   const clients = items.filter((u) => u.role === "client");
@@ -142,7 +190,9 @@ export default function AdminUserList({
               key={u.id}
               account={u}
               onToggle={toggle}
+              onDelete={remove}
               busy={busyId === u.id}
+              deleting={deletingId === u.id}
             />
           ))}
         </div>
@@ -160,7 +210,9 @@ export default function AdminUserList({
               key={u.id}
               account={u}
               onToggle={toggle}
+              onDelete={remove}
               busy={busyId === u.id}
+              deleting={deletingId === u.id}
             />
           ))}
         </div>

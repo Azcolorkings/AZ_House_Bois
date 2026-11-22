@@ -342,6 +342,19 @@ export async function markFoundingFreeUsed(userId: string): Promise<void> {
 }
 
 /**
+ * Reopen all founding free months: clears the used flag for every user.
+ * Admin-only — callers must gate to isAdminEmail. Used when the owner
+ * wants the 5 first-month-free spots available again (e.g. a test
+ * account burned one). Never touches Stripe.
+ */
+export async function resetFoundingFreeUsed(): Promise<void> {
+  await ensureSchema();
+  await sql`
+    UPDATE users SET founding_free_used = FALSE WHERE founding_free_used = TRUE
+  `;
+}
+
+/**
  * Admin analytics — server-side counts from the existing tables only.
  * No external service, no Stripe API calls. Used by the Analytics
  * section at the top of /admin. All money is in cents.
@@ -525,6 +538,31 @@ export async function setUserSuspended(
     RETURNING *
   `;
   return rows[0] ?? null;
+}
+
+/**
+ * Permanently delete an account and everything tied to it. Admin-only —
+ * callers must gate to isAdminEmail and refuse the admin account itself.
+ * Dependent rows are deleted first (bookings where the user is client
+ * or boi, then their application and listing) so nothing is orphaned;
+ * the tables also carry ON DELETE CASCADE as a backstop. Never touches
+ * Stripe — a deleted user's Stripe customer/subscription is left alone.
+ */
+export async function deleteUser(id: string): Promise<boolean> {
+  await ensureSchema();
+  await sql`
+    DELETE FROM bookings WHERE client_user_id = ${id} OR boi_user_id = ${id}
+  `;
+  await sql`
+    DELETE FROM applications WHERE user_id = ${id}
+  `;
+  await sql`
+    DELETE FROM listings WHERE user_id = ${id}
+  `;
+  const { rowCount } = await sql`
+    DELETE FROM users WHERE id = ${id}
+  `;
+  return (rowCount ?? 0) > 0;
 }
 
 /** One row per account for the admin dashboard — status fields only, never sensitive application details. */
