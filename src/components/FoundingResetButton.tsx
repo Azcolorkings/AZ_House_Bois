@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 /**
  * "Reopen all 5 founding spots" — admin-only button on the /admin
@@ -14,6 +15,7 @@ export default function FoundingResetButton({
 }: {
   spotsLeft: number;
 }) {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [done, setDone] = useState(false);
@@ -35,12 +37,17 @@ export default function FoundingResetButton({
     setDone(true);
     setBusy(false);
     setConfirming(false);
+    // Re-render the server component so the founding card (and the rest
+    // of Analytics) shows the fresh count from the database.
+    router.refresh();
   }
 
   return (
     <div style={{ marginTop: 8 }}>
       <p className="small muted" style={{ margin: "0 0 8px", lineHeight: 1.8 }}>
-        {done ? "5 of 5 founding spots left" : `${spotsLeft} of 5 founding spots left`}
+        {/* Always show the live count from the server (refreshed after a
+            reset) rather than assuming 5 — the number must match the DB. */}
+        {spotsLeft} of 5 founding spots left
       </p>
       <button
         type="button"

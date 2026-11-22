@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { AdminUserRow } from "@/lib/db";
 
 function fmtDate(iso: string): string {
@@ -122,6 +123,7 @@ export default function AdminUserList({
 }: {
   users: AdminUserRow[];
 }) {
+  const router = useRouter();
   const [items, setItems] = useState(users);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -145,6 +147,9 @@ export default function AdminUserList({
       prev.map((u) => (u.id === id ? { ...u, suspended } : u))
     );
     setBusyId(null);
+    // Re-render the server component so the Analytics counts (suspended,
+    // paying) match the database instead of showing the old numbers.
+    router.refresh();
   }
 
   async function remove(id: string) {
@@ -163,6 +168,11 @@ export default function AdminUserList({
     }
     setItems((prev) => prev.filter((u) => u.id !== id));
     setDeletingId(null);
+    // Re-render the server component so the Analytics counts (total
+    // accounts, clients vs bois, signups, subscriptions, listings,
+    // bookings, founding spots, 14-day signups) match the database
+    // instead of showing the old numbers.
+    router.refresh();
   }
 
   const clients = items.filter((u) => u.role === "client");
