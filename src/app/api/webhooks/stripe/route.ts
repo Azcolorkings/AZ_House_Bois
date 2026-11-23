@@ -101,20 +101,35 @@ export async function POST(req: Request) {
       const customerId =
         typeof obj.customer === "string" ? obj.customer : undefined;
       if (customerId) {
-        const status =
-          event.type === "customer.subscription.deleted"
-            ? "canceled"
-            : obj.status ?? "active";
-        await updateUserSubscriptionByCustomer(customerId, {
-          subscription_status: status,
-          stripe_subscription_id:
-            event.type === "checkout.session.completed"
-              ? undefined
-              : (obj as { id?: string }).id,
-          current_period_end: obj.current_period_end
-            ? new Date(obj.current_period_end * 1000).toISOString()
-            : undefined,
-        });
+        if (event.type === "checkout.session.completed") {
+          // obj here is a Checkout Session, NOT a subscription: its
+          // status is "complete", which is not a subscription status.
+          // Writing it as the subscription status overwrote the
+          // "active" set moments earlier by
+          // customer.subscription.created (created ~1s before the
+          // session event), so the dashboard kept showing "Not
+          // subscribed yet" and the Subscribe button again — and the
+          // boi could never reach the listing editor. A completed
+          // subscription checkout means the subscription is live, and
+          // the subscription id / period end belong to the subscription
+          // events — never clobber them with the session's (absent)
+          // values.
+          await updateUserSubscriptionByCustomer(customerId, {
+            subscription_status: "active",
+          });
+        } else {
+          const status =
+            event.type === "customer.subscription.deleted"
+              ? "canceled"
+              : obj.status ?? "active";
+          await updateUserSubscriptionByCustomer(customerId, {
+            subscription_status: status,
+            stripe_subscription_id: (obj as { id?: string }).id,
+            current_period_end: obj.current_period_end
+              ? new Date(obj.current_period_end * 1000).toISOString()
+              : undefined,
+          });
+        }
       }
       // Founding offer: burn one of the 5 free months ONLY now that
       // the subscription actually completed. The checkout session and

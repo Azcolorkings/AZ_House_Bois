@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
+import { getLiveSubscriptionForCustomer } from "@/lib/stripe";
 import {
   getApplicationByUserId,
   getBookingsForBoi,
@@ -8,6 +9,7 @@ import {
   getListingByUserId,
   getUserById,
   hasSignedHomeownerAgreement,
+  updateUserSubscriptionByCustomer,
 } from "@/lib/db";
 import {
   formatCents,
@@ -54,8 +56,35 @@ export default async function Dashboard({
   searchParams: Promise<{ subscribed?: string; booked?: string }>;
 }) {
   const session = await auth();
-  const user = session?.user?.id ? await getUserById(session.user.id) : null;
+  let user = session?.user?.id ? await getUserById(session.user.id) : null;
   const { subscribed, booked } = await searchParams;
+
+  // Self-heal for the Nov 22 webhook bug (see
+  // src/app/api/webhooks/stripe/route.ts): a completed subscription
+  // checkout used to store the Checkout Session's "complete" status
+  // instead of "active", so a paying subscriber's dashboard kept
+  // showing "Not subscribed yet" and the listing editor never
+  // appeared. If this user has a Stripe customer id but the row does
+  // not say active, ask Stripe whether the subscription is actually
+  // live and sync the row. Runs only for non-active subscribers, and
+  // a Stripe failure never breaks the dashboard.
+  if (user && user.stripe_customer_id && user.subscription_status !== "active") {
+    try {
+      const live = await getLiveSubscriptionForCustomer(
+        user.stripe_customer_id
+      );
+      if (live) {
+        await updateUserSubscriptionByCustomer(user.stripe_customer_id, {
+          subscription_status: "active",
+          stripe_subscription_id: live.id,
+          current_period_end: live.current_period_end ?? undefined,
+        });
+        user = await getUserById(user.id);
+      }
+    } catch (err) {
+      console.error("subscription resync failed", err);
+    }
+  }
 
   if (!user) {
     return (

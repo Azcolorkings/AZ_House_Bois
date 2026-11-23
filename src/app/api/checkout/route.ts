@@ -1,12 +1,13 @@
 import type Stripe from "stripe";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { getStripe, priceIdForRole, priceConfigured } from "@/lib/stripe";
+import { getLiveSubscriptionForCustomer, getStripe, priceIdForRole, priceConfigured } from "@/lib/stripe";
 import { FOUNDING_COUPON_ID, FOUNDING_FREE_SPOTS } from "@/lib/pricing";
 import {
   countFoundingFreeUsed,
   getUserById,
   updateUserStripe,
+  updateUserSubscriptionByCustomer,
   getApplicationByUserId,
   hasSignedHomeownerAgreement,
 } from "@/lib/db";
@@ -43,6 +44,49 @@ export async function POST(req: Request) {
     const user = await getUserById(session.user.id);
     if (!user) {
       return NextResponse.json({ error: "Account not found." }, { status: 404 });
+    }
+
+    // Never sell a second subscription to someone who already has a
+    // live one. The DB status can go stale (see the Nov 22 webhook
+    // bug, where a completed checkout stored "complete" instead of
+    // "active"), and without this guard a paying user who hits
+    // Subscribe again would end up double-billed. Sync the row and
+    // tell them they're already subscribed. A failed Stripe lookup
+    // must never block a legit first subscription, so it falls
+    // through to the normal checkout.
+    if (user.subscription_status === "active") {
+      return NextResponse.json(
+        {
+          error:
+            "You're already subscribed — your dashboard has your membership and listing.",
+          code: "already-subscribed",
+        },
+        { status: 409 }
+      );
+    }
+    if (user.stripe_customer_id) {
+      try {
+        const live = await getLiveSubscriptionForCustomer(
+          user.stripe_customer_id
+        );
+        if (live) {
+          await updateUserSubscriptionByCustomer(user.stripe_customer_id, {
+            subscription_status: "active",
+            stripe_subscription_id: live.id,
+            current_period_end: live.current_period_end ?? undefined,
+          });
+          return NextResponse.json(
+            {
+              error:
+                "You're already subscribed — refresh your dashboard and your listing editor will be there.",
+              code: "already-subscribed",
+            },
+            { status: 409 }
+          );
+        }
+      } catch (err) {
+        console.error("subscription check failed", err);
+      }
     }
 
     // Homeowners must sign the homeowner agreement & waiver before they

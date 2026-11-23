@@ -29,3 +29,37 @@ export function getStripe(): Stripe {
 export function priceIdForRole(role: "client" | "boi"): string {
   return role === "client" ? CLIENT_PRICE_ID : BOI_PRICE_ID;
 }
+
+/**
+ * The live ("active") subscription for a Stripe customer, if one
+ * exists. Used to heal a user row whose subscription status went stale
+ * — e.g. the Nov 22 webhook bug that stored a Checkout Session's
+ * "complete" status instead of "active", leaving a paying boi unable
+ * to reach the listing editor. Returns null when the customer has no
+ * active subscription. Never throws for a missing customer; Stripe
+ * errors propagate to the caller, which must fail soft.
+ */
+export async function getLiveSubscriptionForCustomer(customerId: string): Promise<{
+  id: string;
+  status: string;
+  current_period_end: string | null;
+} | null> {
+  const stripe = getStripe();
+  const subs = await stripe.subscriptions.list({
+    customer: customerId,
+    status: "active",
+    limit: 1,
+  });
+  const sub = subs.data[0];
+  if (!sub) return null;
+  // In this Stripe API version the period end lives on the
+  // subscription item, not on the subscription itself.
+  const periodEnd = sub.items.data[0]?.current_period_end ?? null;
+  return {
+    id: sub.id,
+    status: sub.status,
+    current_period_end: periodEnd
+      ? new Date(periodEnd * 1000).toISOString()
+      : null,
+  };
+}

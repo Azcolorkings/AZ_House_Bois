@@ -632,11 +632,16 @@ export async function updateUserSubscriptionByCustomer(
   }
 ) {
   await ensureSchema();
+  // COALESCE keeps the stored subscription id / period end when the
+  // caller does not supply one — a partial update (e.g. the
+  // checkout.session.completed handler, which only knows the
+  // subscription is live) must never null out values a previous
+  // event already set.
   await sql`
     UPDATE users SET
       subscription_status = ${patch.subscription_status},
-      stripe_subscription_id = ${patch.stripe_subscription_id ?? null},
-      current_period_end = ${patch.current_period_end ?? null}
+      stripe_subscription_id = COALESCE(${patch.stripe_subscription_id ?? null}, stripe_subscription_id),
+      current_period_end = COALESCE(${patch.current_period_end ?? null}, current_period_end)
     WHERE stripe_customer_id = ${stripeCustomerId}
   `;
 }
