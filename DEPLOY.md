@@ -549,6 +549,58 @@ credentials, so nothing about Stripe changes in the meantime.
 - **Note:** in the installed Stripe SDK (18.5.0, API 2025-08-27) `current_period_end` lives on the subscription *item*, not the subscription — `getLiveSubscriptionForCustomer` reads `sub.items.data[0].current_period_end`. The webhook's `obj.current_period_end` is therefore always undefined for subscription events too; harmless now (COALESCE keeps the old value).
 - **John's row:** healed automatically by the dashboard reconciliation on his next signed-in visit (as luciferlongo@gmail.com). His listing draft was prefilled at approval, so the editor appears with it once the status syncs. No manual SQL needed. The two abandoned open Checkout Sessions (`cs_live_agFY9O8T...`, `cs_live_ags6Ut...`) expire on their own ~24h after creation — tell John not to complete any old Stripe checkout tab, or expire them in the Stripe Dashboard (Payments → Checkout Sessions) if they are still open.
 
+### 3p. Admin comp subscription — free subscription, no charge (added 2026-11-22)
+
+- **What it is:** an admin-only way to give any user a free
+  subscription (e.g. a test homeowner account so Steven can watch a
+  homeowner subscribe without paying). No Stripe or PayPal charge, no
+  coupon, no founding-spot involvement — a reusable admin action, not
+  a one-off hack.
+- **How it works:** `POST /api/admin/comp-subscription` `{ id, comp }`
+  (admin-gated to `isAdminEmail`, same as suspend/delete). Grant
+  (`comp: true`) sets `subscription_status = 'active'`,
+  `payment_provider = 'comp'`, `current_period_end = NULL` (the
+  dashboard only shows a period-end line when one is set, so null
+  renders nothing). The Stripe/PayPal subscription ids are never
+  touched — a comped user has none. Refuses anyone who already has an
+  active paid subscription (400); granting twice is a harmless no-op
+  (`already: true`). Remove (`comp: false`) only works when the
+  provider is `'comp'` — it sets the status back to `'none'` and
+  clears the provider. Comping the admin's own account is allowed.
+  Helper: `setCompSubscription(id, comp)` in `src/lib/db.ts`.
+- **Admin UI:** every account card on `/admin` (`AdminUserList.tsx`)
+  has a "Comp free" / "Remove comp" button next to Suspend/Delete
+  (two-click confirm, same pattern as Delete). The card shows
+  "Membership: active · **Comp (free)**" plus a note that the account
+  browses and books like a paying subscriber. After a change the row
+  updates in place and `router.refresh()` re-renders the Analytics
+  counts. `payment_provider` was added to `AdminUserRow` /
+  `listAllUsersForAdmin()` to drive the button and label.
+- **Treated as subscribed everywhere:** dashboard, roster page,
+  `GET /api/roster`, booking page, and `POST /api/bookings` all gate
+  on `subscription_status === 'active'` only, so a comped user passes
+  them exactly like a paying one. `POST /api/checkout` refuses (409)
+  while the status is active, so a comped user can never buy a second
+  subscription. The dashboard membership card shows "Active —
+  complimentary (free)" and a "nothing to manage or cancel" note
+  instead of the Stripe Customer Portal button (a comp has no Stripe
+  subscription to manage).
+- **Webhooks can never overwrite a comp:** the Stripe webhook updates
+  only `WHERE stripe_customer_id = ...` and the PayPal webhook only
+  acts on events for a PayPal subscription id — a comped user has
+  neither id, so no event maps to them. Edge case: a user who once
+  had a paid (now cancelled) subscription still carries a
+  `stripe_customer_id`; if Stripe ever sent another event for that
+  old customer id it could overwrite a later comp. The route does not
+  block that case — it only refuses currently-active paid
+  subscriptions — so don't comp an account that previously paid
+  unless you accept that risk.
+- **Analytics:** the "paying" count (analytics card + the pill on
+  `/admin`) excludes comps — a free subscription is not a paying one.
+  Both counts filter `payment_provider IS DISTINCT FROM 'comp'`.
+- Pricing, coupons, and the founding offer are untouched. No user
+  accounts were created or touched by this change.
+
 ### 3n. Trash-cleanup parallax on the homepage (added 2026-11-22)
 
 - **What it is:** a client component (`src/components/TrashCleanupParallax.tsx`) rendered on the homepage only, behind the sticky header. ~32 small trash pieces (inline SVG: crumpled paper ball, bottle, candy wrapper, can, dust specks, lint) are scattered over the page at the top. As the visitor scrolls, each piece drifts at its own parallax rate and fades out SLOWLY — each fade takes 10–15% of the page's scroll range — so the cleanup feels gradual all the way down. By the bottom of the page every piece is gone: messy at the top, spotless at the bottom.

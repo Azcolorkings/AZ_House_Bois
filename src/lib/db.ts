@@ -439,7 +439,7 @@ export async function getAdminAnalytics(): Promise<AdminAnalytics> {
     not_subscribed: string;
   }>`
     SELECT
-      COUNT(*) FILTER (WHERE subscription_status = 'active')::text AS paying,
+      COUNT(*) FILTER (WHERE subscription_status = 'active' AND payment_provider IS DISTINCT FROM 'comp')::text AS paying,
       COUNT(*) FILTER (WHERE subscription_status = 'none')::text AS not_subscribed
     FROM users
   `;
@@ -592,6 +592,8 @@ export interface AdminUserRow {
   email: string;
   role: Role;
   subscription_status: string;
+  /** "stripe" | "paypal" | "comp" (free, admin-granted) — null for pre-PayPal accounts (treated as Stripe). */
+  payment_provider: string | null;
   suspended: boolean;
   created_at: string;
   /** True when the homeowner signed the homeowner agreement & waiver. */
@@ -609,7 +611,7 @@ export async function listAllUsersForAdmin(): Promise<AdminUserRow[]> {
   await ensureSchema();
   const { rows } = await sql<AdminUserRow>`
     SELECT
-      u.id, u.email, u.role, u.subscription_status, u.suspended, u.created_at,
+      u.id, u.email, u.role, u.subscription_status, u.payment_provider, u.suspended, u.created_at,
       (u.homeowner_agreement_text IS NOT NULL
         AND u.homeowner_agreement_signature IS NOT NULL) AS homeowner_agreement_signed,
       a.status AS application_status,
@@ -644,6 +646,39 @@ export async function updateUserSubscriptionByCustomer(
       current_period_end = COALESCE(${patch.current_period_end ?? null}, current_period_end)
     WHERE stripe_customer_id = ${stripeCustomerId}
   `;
+}
+
+/**
+ * Admin comp subscription: grant or remove a free subscription with no
+ * Stripe/PayPal charge. Grant sets subscription_status 'active' with
+ * payment_provider 'comp' and no period end (the dashboard only shows
+ * a period-end line when one is set, so null renders nothing). Remove
+ * sets the status back to 'none' and clears the provider. Stripe /
+ * PayPal subscription ids are never touched — a comped user has none.
+ */
+export async function setCompSubscription(
+  id: string,
+  comp: boolean
+): Promise<UserRow | null> {
+  await ensureSchema();
+  if (comp) {
+    await sql`
+      UPDATE users SET
+        subscription_status = 'active',
+        payment_provider = 'comp',
+        current_period_end = NULL
+      WHERE id = ${id}
+    `;
+  } else {
+    await sql`
+      UPDATE users SET
+        subscription_status = 'none',
+        payment_provider = NULL,
+        current_period_end = NULL
+      WHERE id = ${id}
+    `;
+  }
+  return getUserById(id);
 }
 
 /**

@@ -36,7 +36,8 @@ export default async function AdminDashboardPage() {
   const bois = users.filter((u) => u.role === "boi");
   const suspended = users.filter((u) => u.suspended).length;
   const paying = users.filter(
-    (u) => u.subscription_status === "active"
+    (u) =>
+      u.subscription_status === "active" && u.payment_provider !== "comp"
   ).length;
 
   return (

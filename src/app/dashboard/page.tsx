@@ -256,7 +256,9 @@ export default async function Dashboard({
             Status:{" "}
             <strong>
               {isActive
-                ? "Active — $20/month"
+                ? user.payment_provider === "comp"
+                  ? "Active — complimentary (free)"
+                  : "Active — $20/month"
                 : user.subscription_status === "none"
                   ? "Not subscribed yet"
                   : user.subscription_status}
@@ -282,8 +284,14 @@ export default async function Dashboard({
               // PayPal has no Customer Portal — subscribers manage or
               // cancel in their PayPal account. Stripe subscribers keep
               // the portal button. Pre-PayPal accounts (null provider)
-              // are Stripe accounts.
-              user.payment_provider === "paypal" ? (
+              // are Stripe accounts. A comp subscription is free, so
+              // there is no billing to manage at all.
+              user.payment_provider === "comp" ? (
+                <p className="muted small" style={{ margin: 0 }}>
+                  Complimentary subscription — free, nothing to manage
+                  or cancel.
+                </p>
+              ) : user.payment_provider === "paypal" ? (
                 <p className="muted small" style={{ margin: 0 }}>
                   Paid with PayPal — manage or cancel your subscription in
                   your PayPal account.
