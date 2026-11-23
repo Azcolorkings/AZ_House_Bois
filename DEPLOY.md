@@ -601,6 +601,73 @@ credentials, so nothing about Stripe changes in the meantime.
 - Pricing, coupons, and the founding offer are untouched. No user
   accounts were created or touched by this change.
 
+### 3q. Google Maps address autocomplete on the booking form (added 2026-11-23)
+
+- **What it is:** the booking form's "Address for the clean" line is
+  now a Google Maps address autocomplete (booking form only — the
+  boi application form keeps its plain address field). As the
+  homeowner types, Google suggests real US addresses in a dropdown
+  under the field, biased toward Arizona. Picking one fills the
+  field with Google's formatted address and shows a small map with a
+  pin under the field. The server re-checks the submitted address
+  before the booking is created, so a fake pasted address can't slip
+  through — a typed address with no place picked is geocoded, and a
+  picked place is confirmed via Place Details. A city or state alone
+  doesn't pass: the check requires a street number + street name.
+- **Fail-soft (same pattern as PayPal):** everything keys off the
+  env vars below. With no key configured, the form renders a plain
+  text input identical to the old one, no map shows, and the server
+  check is skipped — bookings work exactly as before. If Google is
+  unreachable when the server checks, the booking goes through
+  rather than blocking a real customer. Only a definite "Google
+  can't find this address" rejects, with the message: "That address
+  doesn't look like a real street address — pick one of the Google
+  suggestions as you type, or double-check the number and spelling."
+- **Files:** `src/components/AddressAutocomplete.tsx` (reusable
+  input; loads the Maps JS API + Places library only when a browser
+  key is configured, US-only suggestions, Arizona-biased bounds),
+  `src/lib/google-maps.ts` (server verification: Place Details +
+  Geocoding API), `GET /api/google-maps/config` (returns the public
+  browser key + whether Maps is usable — never the server key),
+  `src/components/BookingForm.tsx` (wired in, sends `place_id` /
+  `latitude` / `longitude` with the booking), `POST /api/bookings`
+  (verifies before creating; stores Google's canonical address,
+  place id, and coordinates — coordinates are never trusted from
+  the request body). New booking columns `place_id`,
+  `latitude`, `longitude` added the same additive way as the PayPal
+  columns (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` in
+  `ensureSchema`, `src/lib/db.ts`) — existing bookings keep working
+  with nulls.
+- **To turn it on (owner steps):**
+  1. Google Cloud Console (console.cloud.google.com) → create a
+     project (or reuse one) → Billing: link a card (required even
+     though the free credit covers this volume).
+  2. APIs & Services → Library → enable **Maps JavaScript API**,
+     **Places API**, and **Geocoding API**.
+  3. APIs & Services → Credentials → Create Credentials → API key.
+     Restrict it: under "Application restrictions" pick **HTTP
+     referrers** and add `https://az-house-bois.vercel.app/*` (plus
+     `http://localhost:3000/*` if testing locally); under "API
+     restrictions" pick "Restrict key" and tick only the three APIs
+     above. Copy the key.
+  4. Vercel project az-house-bois → Settings → Environment
+     Variables (Production): `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` =
+     the key, and `GOOGLE_MAPS_API_KEY` = the same key (the server
+     falls back to the browser key, so one value in both fields is
+     fine — the two exist so the server key can be locked down
+     differently later). Then redeploy.
+  5. Test: open a booking page, type an address, pick a suggestion
+     — the map pin should appear; try submitting a made-up address
+     like "123 Fake Street Nowhere" and it should be rejected.
+- **Cost:** Google gives a $200/month free credit. Places
+  Autocomplete is ~$2.83 per 1,000 requests and Geocoding ~$5 per
+  1,000 — at this site's volume the free credit covers it. Set a
+  budget alert in Google Cloud (Billing → Budgets & alerts) so a
+  surprise bill can't sneak up.
+- Stripe, PayPal, pricing, and the boi application flow are
+  untouched. No user accounts were created or touched by this
+  change.
+
 ### 3n. Trash-cleanup parallax on the homepage (added 2026-11-22)
 
 - **What it is:** a client component (`src/components/TrashCleanupParallax.tsx`) rendered on the homepage only, behind the sticky header. ~32 small trash pieces (inline SVG: crumpled paper ball, bottle, candy wrapper, can, dust specks, lint) are scattered over the page at the top. As the visitor scrolls, each piece drifts at its own parallax rate and fades out SLOWLY — each fade takes 10–15% of the page's scroll range — so the cleanup feels gradual all the way down. By the bottom of the page every piece is gone: messy at the top, spotless at the bottom.

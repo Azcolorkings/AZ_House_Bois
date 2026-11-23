@@ -241,6 +241,15 @@ export async function ensureSchema() {
       ADD COLUMN IF NOT EXISTS paypal_order_id TEXT,
       ADD COLUMN IF NOT EXISTS paypal_capture_id TEXT
   `;
+  // Google Maps columns (added Nov 23, 2026): the Places place id and
+  // coordinates for the verified service address. Additive only —
+  // existing bookings keep working with nulls.
+  await sql`
+    ALTER TABLE bookings
+      ADD COLUMN IF NOT EXISTS place_id TEXT,
+      ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION
+  `;
   initialized = true;
 }
 
@@ -935,6 +944,11 @@ export interface BookingRow {
   time_slot: string;
   frequency: "one-time" | "weekly" | "every-2-weeks" | "monthly";
   service_address: string;
+  /** Google Places id for the verified service address (null when Maps isn't configured). */
+  place_id: string | null;
+  /** Coordinates from Google for the verified service address. */
+  latitude: number | null;
+  longitude: number | null;
   /** True when the homeowner has their own cleaning supplies (boi brings none). */
   supplies_by_homeowner: boolean;
   notes: string;
@@ -1000,6 +1014,11 @@ export async function createBooking(
     supplies_by_homeowner: boolean;
     notes: string;
     stripe_checkout_session_id?: string | null;
+    /** Google Places id for the verified service address. */
+    place_id?: string | null;
+    /** Coordinates from Google for the verified address. */
+    latitude?: number | null;
+    longitude?: number | null;
     /** "stripe" (default) or "paypal". */
     payment_provider?: "stripe" | "paypal";
   }
@@ -1010,6 +1029,7 @@ export async function createBooking(
       id, client_user_id, boi_user_id, listing_id, service, amount_cents,
       currency, company_amount_cents, cleaner_amount_cents,
       date, time_slot, frequency, service_address,
+      place_id, latitude, longitude,
       supplies_by_homeowner, notes, status, stripe_checkout_session_id,
       payment_provider
     )
@@ -1018,6 +1038,7 @@ export async function createBooking(
       ${data.service}, ${data.amount_cents}, 'usd',
       ${data.company_amount_cents}, ${data.cleaner_amount_cents}, ${data.date},
       ${data.time_slot}, ${data.frequency}, ${data.service_address},
+      ${data.place_id ?? null}, ${data.latitude ?? null}, ${data.longitude ?? null},
       ${data.supplies_by_homeowner}, ${data.notes}, 'requested',
       ${data.stripe_checkout_session_id ?? null},
       ${data.payment_provider ?? "stripe"}

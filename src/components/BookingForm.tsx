@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import AddressAutocomplete, {
+  type PickedPlace,
+} from "@/components/AddressAutocomplete";
 import PayPalButton from "@/components/PayPalButton";
 import {
   CLEANING_PRICES,
@@ -28,6 +31,10 @@ export default function BookingForm({ listingId }: { listingId: string }) {
   const [timeSlot, setTimeSlot] = useState("10:00");
   const [frequency, setFrequency] = useState<FrequencyKey>("one-time");
   const [address, setAddress] = useState("");
+  // Set when the homeowner picks a Google suggestion — the place id +
+  // coordinates the server re-checks. Cleared when the address is
+  // typed over (the server then geocodes the typed text instead).
+  const [place, setPlace] = useState<PickedPlace | null>(null);
   const [notes, setNotes] = useState("");
   const [supplies, setSupplies] = useState(false);
   const [error, setError] = useState("");
@@ -84,6 +91,9 @@ export default function BookingForm({ listingId }: { listingId: string }) {
           time_slot: timeSlot,
           frequency,
           service_address: address,
+          place_id: place?.placeId ?? null,
+          latitude: place?.lat ?? null,
+          longitude: place?.lng ?? null,
           supplies_by_homeowner: supplies,
           notes,
           payment_provider: method,
@@ -209,10 +219,13 @@ export default function BookingForm({ listingId }: { listingId: string }) {
       </p>
 
       <label htmlFor="service_address">Address for the clean</label>
-      <input
+      <AddressAutocomplete
         id="service_address"
         value={address}
-        onChange={(e) => setAddress(e.target.value)}
+        onChange={(v, p) => {
+          setAddress(v);
+          setPlace(p ?? null);
+        }}
         required
         placeholder="Street address, city, ZIP"
       />

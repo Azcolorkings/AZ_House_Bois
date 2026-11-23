@@ -28,6 +28,7 @@ import {
   timeSlotLabel,
 } from "@/lib/pricing";
 import { notifyBoiNewBooking, notifyNewBooking } from "@/lib/notify";
+import { verifyBookingAddress } from "@/lib/google-maps";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -140,6 +141,45 @@ export async function POST(req: Request) {
     );
   }
 
+  // Google Maps check (fail-soft): when a Maps key is configured, the
+  // address must be a real US street address — a place picked from the
+  // autocomplete dropdown is confirmed via Place Details, a typed
+  // address with no place picked is geocoded (a city or state alone
+  // doesn't pass; it needs a street number + street name). With no
+  // key configured this passes everything through, exactly like
+  // before the feature existed. Coordinates stored below always come
+  // from Google, never from the request body.
+  const placeId = str(body?.place_id);
+  const verification = await verifyBookingAddress({
+    address: serviceAddress,
+    placeId: placeId || undefined,
+  });
+  if (!verification.ok) {
+    return NextResponse.json(
+      {
+        error:
+          "That address doesn't look like a real street address — pick one of the Google suggestions as you type, or double-check the number and spelling.",
+      },
+      { status: 400 }
+    );
+  }
+  // Google's canonical address when verified; the typed text when the
+  // check was skipped (no key configured).
+  const verifiedAddress = verification.formattedAddress ?? serviceAddress;
+  const verifiedPlaceId = verification.skipped
+    ? null
+    : (verification.placeId ?? null);
+  const verifiedLat = verification.skipped
+    ? null
+    : (typeof verification.latitude === "number"
+      ? verification.latitude
+      : null);
+  const verifiedLng = verification.skipped
+    ? null
+    : (typeof verification.longitude === "number"
+      ? verification.longitude
+      : null);
+
   const listing = await getListingById(listingId);
   if (!listing || !listing.published) {
     return NextResponse.json(
@@ -178,7 +218,10 @@ export async function POST(req: Request) {
       date,
       time_slot: timeSlot,
       frequency,
-      service_address: serviceAddress,
+      service_address: verifiedAddress,
+      place_id: verifiedPlaceId,
+      latitude: verifiedLat,
+      longitude: verifiedLng,
       supplies_by_homeowner: suppliesByHomeowner,
       notes,
       payment_provider: paymentProvider,
@@ -191,7 +234,7 @@ export async function POST(req: Request) {
       date,
       timeLabel: timeSlotLabel(timeSlot),
       frequencyLabel: frequencyLabel(frequency),
-      address: serviceAddress,
+      address: verifiedAddress,
       suppliesByHomeowner,
       notes,
     };
