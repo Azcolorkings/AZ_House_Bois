@@ -7,10 +7,61 @@ import "./globals.css";
 const display = Anton({ weight: "400", subsets: ["latin"], variable: "--font-display" });
 const body = Manrope({ subsets: ["latin"], variable: "--font-body" });
 
+const SITE_URL = "https://az-house-bois.vercel.app";
+const SITE_DESCRIPTION =
+  "Regular house cleaning all over Arizona. A handsome boi in a skimpy, playful uniform comes to clean your home — thorough, professional, and very easy on the eyes.";
+
 export const metadata: Metadata = {
-  title: "AZ House Bois — Arizona House Cleaning With Eye Candy",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "AZ House Bois — Arizona House Cleaning With Eye Candy",
+    template: "%s | AZ House Bois",
+  },
+  description: SITE_DESCRIPTION,
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: SITE_URL,
+    siteName: "AZ House Bois",
+    title: "AZ House Bois — Arizona House Cleaning With Eye Candy",
+    description: SITE_DESCRIPTION,
+    images: [
+      {
+        url: "/images/hero-home.webp",
+        width: 1920,
+        height: 1280,
+        alt: "A house boi cleaning a bright, luxury Arizona living room",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "AZ House Bois — Arizona House Cleaning With Eye Candy",
+    description: SITE_DESCRIPTION,
+    images: ["/images/hero-home.webp"],
+  },
+};
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "ProfessionalService",
+  name: "AZ House Bois",
   description:
-    "Regular house cleaning all over Arizona. A handsome boi in a skimpy, playful uniform comes to clean your home — thorough, professional, and very easy on the eyes.",
+    "House cleaning all over Arizona. A handsome, professional cleaner in a playful uniform comes to clean your home. Regular $180, deep $350, move-in/out $450.",
+  url: SITE_URL,
+  areaServed: [
+    { "@type": "State", name: "Arizona" },
+    { "@type": "City", name: "Phoenix" },
+    { "@type": "City", name: "Mesa" },
+    { "@type": "City", name: "Scottsdale" },
+    { "@type": "City", name: "Tempe" },
+  ],
+  priceRange: "$180 - $450",
+  sameAs: [
+    "https://www.facebook.com/profile.php?id=61596831958881",
+    "https://www.instagram.com/azhousebois/",
+  ],
 };
 
 async function Header() {
@@ -59,6 +110,12 @@ async function Header() {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      </head>
       <body className={`${display.variable} ${body.variable}`}>
         <Header />
         <main>{children}</main>

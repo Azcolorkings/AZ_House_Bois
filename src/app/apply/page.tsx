@@ -1,8 +1,15 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { getApplicationByUserId, getUserById } from "@/lib/db";
 import ApplicationForm from "@/components/ApplicationForm";
 import FoundingOffer from "@/components/FoundingOffer";
+
+export const metadata: Metadata = {
+  title: "Become a House Boi — Apply | AZ House Bois",
+  description:
+    "Live in Arizona and want flexible cleaning work? Apply to become a House Boi — keep 80% of every booking. First 5 approved bois get month one free.",
+};
 
 export default async function ApplyPage() {
   const session = await auth();

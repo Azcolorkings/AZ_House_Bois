@@ -1,8 +1,15 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
 import { getPublishedListings, getUserById, hasSignedHomeownerAgreement } from "@/lib/db";
 import SubscribeButton from "@/components/SubscribeButton";
+
+export const metadata: Metadata = {
+  title: "Browse Cleaners in Arizona | AZ House Bois",
+  description:
+    "Meet the House Bois cleaning homes across Phoenix, Mesa, Scottsdale and Tempe. Browse profiles and book a cleaning — members only.",
+};
 
 const CITIES = [
   "Phoenix", "Scottsdale", "Paradise Valley", "Tempe", "Mesa", "Chandler",

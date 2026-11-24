@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import SubscribeButton from "@/components/SubscribeButton";
 import FoundingOffer from "@/components/FoundingOffer";
@@ -7,6 +8,12 @@ import {
   SERVICE_KEYS,
   formatCents,
 } from "@/lib/pricing";
+
+export const metadata: Metadata = {
+  title: "Cleaning Prices & Membership | AZ House Bois",
+  description:
+    "House cleaning in Arizona from $180 regular, $350 deep, $450 move-in/out. $20/month membership to book a cleaner. See prices and join.",
+};
 
 export default async function Pricing() {
   return (
